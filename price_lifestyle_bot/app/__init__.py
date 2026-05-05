@@ -1,0 +1,2 @@
+"""Price comparison Telegram bot."""
+

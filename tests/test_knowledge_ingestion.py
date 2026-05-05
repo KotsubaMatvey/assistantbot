@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+from app.services.knowledge_ingestion import (
+    add_rss_subscription,
+    extract_page_summary,
+    format_feed_digests,
+    parse_feed_entries,
+)
+
+
+def test_extract_page_summary_removes_scripts_and_keeps_title() -> None:
+    page = extract_page_summary(
+        """
+        <html>
+          <head><title>Test page</title><script>secret()</script></head>
+          <body><h1>Hello</h1><p>Useful text</p></body>
+        </html>
+        """,
+        "https://example.com",
+    )
+
+    assert page.title == "Test page"
+    assert "Useful text" in page.summary
+    assert "secret" not in page.summary
+
+
+def test_parse_rss_entries() -> None:
+    entries = parse_feed_entries(
+        """
+        <rss>
+          <channel>
+            <item>
+              <title>One</title>
+              <link>https://example.com/one</link>
+              <description><![CDATA[<p>Summary</p>]]></description>
+              <pubDate>Wed, 06 May 2026 10:00:00 GMT</pubDate>
+            </item>
+          </channel>
+        </rss>
+        """
+    )
+
+    assert len(entries) == 1
+    assert entries[0].title == "One"
+    assert entries[0].summary == "Summary"
+
+
+def test_parse_atom_entries() -> None:
+    entries = parse_feed_entries(
+        """
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <title>Atom item</title>
+            <link href="https://example.com/atom" />
+            <summary>Atom summary</summary>
+            <updated>2026-05-06T10:00:00Z</updated>
+          </entry>
+        </feed>
+        """
+    )
+
+    assert entries[0].title == "Atom item"
+    assert entries[0].link == "https://example.com/atom"
+
+
+def test_add_rss_subscription_deduplicates_urls(tmp_path) -> None:
+    add_rss_subscription(str(tmp_path), user_id=123, feed_url="https://example.com/feed.xml")
+    path = add_rss_subscription(str(tmp_path), user_id=123, feed_url="https://example.com/feed.xml")
+
+    assert path.read_text(encoding="utf-8").splitlines() == ["https://example.com/feed.xml"]
+
+
+def test_format_feed_digests_handles_empty_list() -> None:
+    assert format_feed_digests([]) == "RSS-подписок пока нет."

@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "price-lifestyle-bot"
+version = "0.1.0"
+description = "Telegram bot for comparing grocery prices in Bor, Nizhny Novgorod region."
+requires-python = ">=3.12"
+dependencies = [
+  "aiogram>=3.6,<4",
+  "alembic>=1.13,<2",
+  "asyncpg>=0.29,<1",
+  "apscheduler>=3.10,<4",
+  "beautifulsoup4>=4.12,<5",
+  "httpx>=0.27,<1",
+  "pydantic>=2.7,<3",
+  "pydantic-settings>=2.2,<3",
+  "python-dotenv>=1,<2",
+  "redis>=5,<6",
+  "sqlalchemy[asyncio]>=2.0,<3",
+  "structlog>=24,<26",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.10,<2",
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.23,<1",
+  "ruff>=0.5,<1",
+]
+playwright = ["playwright>=1.45,<2"]
+
+[tool.setuptools]
+package-dir = {"" = "price_lifestyle_bot"}
+
+[tool.setuptools.packages.find]
+where = ["price_lifestyle_bot"]
+
+[tool.pytest.ini_options]
+pythonpath = ["price_lifestyle_bot"]
+markers = [
+  "integration: tests that use network, browser, or external services",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = true
+ignore_missing_imports = true

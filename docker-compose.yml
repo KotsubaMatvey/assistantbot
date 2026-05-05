@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pricebot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pricebot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/pricebot}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ENV: ${ENV:-local}
+      CITY: ${CITY:-Бор}
+      PRICE_FRESHNESS_HOURS: ${PRICE_FRESHNESS_HOURS:-24}
+      SCRAPE_INTERVAL_HOURS: ${SCRAPE_INTERVAL_HOURS:-12}
+      ENABLE_PLAYWRIGHT: ${ENABLE_PLAYWRIGHT:-false}
+      OBSIDIAN_VAULT_PATH: ${OBSIDIAN_VAULT_PATH:-/app/assistantbotmemory}
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-[]}
+      MAGNIT_SHOP_CODE: ${MAGNIT_SHOP_CODE:-}
+      MAGNIT_SHOP_TYPE: ${MAGNIT_SHOP_TYPE:-}
+      PYATEROCHKA_STORE_ID: ${PYATEROCHKA_STORE_ID:-}
+      PYATEROCHKA_CITY_ID: ${PYATEROCHKA_CITY_ID:-}
+      SPAR_REGION: ${SPAR_REGION:-}
+      SMART_STORE_ID: ${SMART_STORE_ID:-}
+      FIX_PRICE_CITY: ${FIX_PRICE_CITY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./assistantbotmemory:/app/assistantbotmemory
+    command: python -m app.main
+
+volumes:
+  postgres_data:
