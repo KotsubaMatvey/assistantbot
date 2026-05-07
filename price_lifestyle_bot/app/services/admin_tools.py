@@ -183,6 +183,24 @@ def format_checks(checks: list[CheckResult]) -> str:
     return "\n".join(lines)
 
 
+def health_score(checks: list[CheckResult]) -> int:
+    if not checks:
+        return 100
+    ok_count = sum(1 for check in checks if check.ok)
+    return round(ok_count / len(checks) * 100)
+
+
+def format_health_score(checks: list[CheckResult]) -> str:
+    score = health_score(checks)
+    if score >= 90:
+        label = "ready"
+    elif score >= 70:
+        label = "needs attention"
+    else:
+        label = "blocked"
+    return f"Health score: {score}/100 ({label})"
+
+
 def repo_root_from_cwd() -> str:
     return os.getcwd()
 

@@ -83,6 +83,8 @@ def test_job_delivery_mode_parser_and_tools(tmp_path) -> None:
     _, _, market_mode, market_message = parse_job_request("daily 08:00 markets morning markets")
     assert market_mode == "markets"
     assert market_message == "morning markets"
+    _, _, morning_mode, _ = parse_job_request("daily 08:00 morning daily brief")
+    assert morning_mode == "morning"
 
 
 def test_filtered_search_inbox_tags_source_trust_and_agenda(tmp_path) -> None:
@@ -114,11 +116,14 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     manifest = mini_app_manifest("https://example.com/app")
     command_payload = parse_mini_app_payload('{"type":"command","command":"markets"}')
     basket_payload = parse_mini_app_payload('{"type":"basket_compare","text":"молоко"}')
+    assistant_payload = parse_mini_app_payload('{"type":"assistant_message","text":"btc"}')
 
     assert "Possible tasks" in summary.body
     assert "Possible decisions" in summary.body
     assert manifest.enabled is True
     assert "tasks" in manifest.features
     assert "market_watch" in manifest.features
+    assert "pixel_assistant" in manifest.features
     assert command_payload.command == "markets"
     assert basket_payload.text == "молоко"
+    assert assistant_payload.text == "btc"

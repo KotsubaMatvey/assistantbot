@@ -30,8 +30,14 @@ def mini_app_manifest(url: str) -> MiniAppManifest:
             "tasks",
             "agenda",
             "market_watch",
+            "price_alerts",
+            "pantry",
+            "budget",
+            "family",
             "jobs",
             "skills",
+            "safe_assistants",
+            "pixel_assistant",
             "assistant_status",
             "admin_doctor",
         ],
@@ -56,12 +62,28 @@ def parse_mini_app_payload(raw_data: str) -> MiniAppPayload:
     payload_type = str(raw.get("type", "")).strip()
     if payload_type == "command":
         command = str(raw.get("command", "")).strip().lower()
-        if command not in {"markets", "status", "agenda", "compact", "new"}:
+        if command not in {
+            "markets",
+            "status",
+            "agenda",
+            "compact",
+            "new",
+            "morning",
+            "price_alerts",
+            "pantry",
+            "budget",
+            "assistants",
+        }:
             raise ValueError("unsupported Mini App command")
         return MiniAppPayload(type=payload_type, command=command)
     if payload_type == "basket_compare":
         text = str(raw.get("text", "")).strip()
         if not text:
             raise ValueError("basket text is empty")
+        return MiniAppPayload(type=payload_type, text=text)
+    if payload_type == "assistant_message":
+        text = str(raw.get("text", "")).strip()
+        if not text:
+            raise ValueError("assistant message is empty")
         return MiniAppPayload(type=payload_type, text=text)
     raise ValueError("unsupported Mini App payload type")

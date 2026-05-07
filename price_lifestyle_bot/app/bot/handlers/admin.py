@@ -20,6 +20,7 @@ from app.services.admin_tools import (
     check_vault,
     create_backup,
     format_checks,
+    format_health_score,
     repo_root_from_cwd,
     security_audit_checks,
 )
@@ -109,6 +110,7 @@ async def admin_doctor(message: Message) -> None:
     ]
     lines = [
         "Doctor",
+        format_health_score(checks),
         format_checks(checks),
         f"Access mode: {settings.assistant_access_mode}",
         f"Context visibility: {settings.assistant_context_visibility}",

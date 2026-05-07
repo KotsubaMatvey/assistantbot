@@ -68,6 +68,12 @@
             <b>104 ₽</b>
           </article>
         </div>
+
+        <div class="action-row">
+          <button data-action="send" data-payload="price_alerts">Price alerts</button>
+          <button data-action="send" data-payload="pantry">Pantry</button>
+          <button data-action="send" data-payload="budget">Budget</button>
+        </div>
       </section>
 
       <section class="panel" id="markets" aria-label="Рынки">
@@ -89,10 +95,17 @@
 
       <section class="panel" id="assistant" aria-label="Ассистент">
         <div class="assistant-card">
-          <span class="status-dot"></span>
+          <span class="pixel-claw" aria-hidden="true"></span>
           <div>
-            <h2>Secretary</h2>
-            <p>Следит за задачами, рынками, покупками и утренними дайджестами.</p>
+            <h2>Pixel Assistant</h2>
+            <p>Локальный помощник для быстрых маршрутов: покупки, рынки, задачи и бюджет.</p>
+          </div>
+        </div>
+        <div class="pixel-console">
+          <label for="pixelPrompt">Команда помощнику</label>
+          <div>
+            <input id="pixelPrompt" value="что важно утром?" />
+            <button data-action="assistant">Send</button>
           </div>
         </div>
         <div class="command-grid">
@@ -100,6 +113,8 @@
           <button data-action="send" data-payload="compact">Compact</button>
           <button data-action="send" data-payload="new">New</button>
           <button data-action="send" data-payload="agenda">Agenda</button>
+          <button data-action="send" data-payload="morning">Morning</button>
+          <button data-action="send" data-payload="assistants">Assistants</button>
         </div>
       </section>
 

@@ -28,7 +28,8 @@ body {
 }
 
 button,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -133,7 +134,8 @@ h1 {
 .price-row,
 .assistant-card,
 .timeline article,
-.basket-composer {
+.basket-composer,
+.pixel-console {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 253, 248, 0.92);
@@ -179,6 +181,16 @@ textarea {
   background: #ffffff;
 }
 
+input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--ink);
+  background: #ffffff;
+}
+
 .primary {
   min-height: 44px;
   border: 0;
@@ -192,6 +204,21 @@ textarea {
 .timeline {
   display: grid;
   gap: 10px;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.action-row button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel);
+  font-weight: 800;
 }
 
 .price-row {
@@ -261,6 +288,66 @@ textarea {
   box-shadow: 0 0 0 6px rgba(31, 122, 77, 0.14);
 }
 
+.pixel-claw {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  image-rendering: pixelated;
+  background: var(--red);
+  box-shadow:
+    0 0 0 4px var(--ink),
+    12px 0 0 0 var(--red),
+    -12px 0 0 0 var(--red),
+    0 12px 0 0 var(--amber),
+    12px 12px 0 0 var(--amber),
+    -12px 12px 0 0 var(--amber);
+}
+
+.pixel-claw::before,
+.pixel-claw::after {
+  position: absolute;
+  top: 12px;
+  width: 8px;
+  height: 8px;
+  content: "";
+  background: var(--ink);
+}
+
+.pixel-claw::before {
+  left: 9px;
+}
+
+.pixel-claw::after {
+  right: 9px;
+}
+
+.pixel-console {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.pixel-console label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pixel-console div {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  gap: 8px;
+}
+
+.pixel-console button {
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  background: var(--ink);
+  font-weight: 800;
+}
+
 .command-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -316,7 +403,12 @@ textarea {
   }
 
   .summary-strip,
-  .market-grid {
+  .market-grid,
+  .action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .pixel-console div {
     grid-template-columns: 1fr;
   }
 

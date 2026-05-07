@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-ASSISTANT_MODES = ("secretary", "researcher", "editor", "analyst")
+ASSISTANT_MODES = (
+    "secretary",
+    "researcher",
+    "editor",
+    "analyst",
+    "buyer",
+    "market_analyst",
+)
 
 
 @dataclass(frozen=True)

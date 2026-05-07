@@ -189,15 +189,30 @@ def next_run(
 
 def _split_delivery_mode(text: str) -> tuple[str, str]:
     head, _, tail = text.strip().partition(" ")
-    if head in {"message", "digest", "rss", "doctor", "silent", "markets"} and tail.strip():
+    if head in DELIVERY_MODES and tail.strip():
         return head, tail.strip()
     return "message", text.strip()
 
 
+DELIVERY_MODES = {
+    "message",
+    "digest",
+    "rss",
+    "doctor",
+    "silent",
+    "markets",
+    "morning",
+    "price_alerts",
+}
+
+
 def _normalize_delivery_mode(value: str) -> str:
     normalized = value.strip().lower() or "message"
-    if normalized not in {"message", "digest", "rss", "doctor", "silent", "markets"}:
-        raise ValueError("delivery mode must be message, digest, rss, doctor, silent, or markets")
+    if normalized not in DELIVERY_MODES:
+        raise ValueError(
+            "delivery mode must be message, digest, rss, doctor, silent, markets, "
+            "morning, or price_alerts"
+        )
     return normalized
 
 

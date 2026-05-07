@@ -7,6 +7,8 @@ Static Telegram Mini App prototype for the bot control surface.
 - shopping composer with multiplier-aware examples;
 - market watch dashboard for BTC, BTC.D, S&P 500, Nasdaq and Dow Jones;
 - assistant controls inspired by OpenClaw operator commands: status, compact, new, agenda;
+- pixel assistant foundation that sends safe routing payloads to the bot;
+- pantry, budget and price alert quick actions;
 - memory timeline mock for future live data.
 
 ## Local preview
@@ -21,5 +23,6 @@ payload that would be sent through `Telegram.WebApp.sendData`.
 3. Restart the bot.
 4. Run `/mini_app` in Telegram.
 
-The backend currently exposes the button and manifest foundation. A future step can add a
-`WebAppData` handler that maps Mini App payloads to existing bot commands.
+The backend accepts `WebAppData` payloads for basket comparison, command routing and the
+pixel helper. The helper is intentionally safe: it routes to existing bot commands instead
+of running arbitrary tools.

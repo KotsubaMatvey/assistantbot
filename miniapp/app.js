@@ -28,6 +28,11 @@ document.querySelector("[data-action='basket']")?.addEventListener("click", () =
   sendPayload({ type: "basket_compare", text });
 });
 
+document.querySelector("[data-action='assistant']")?.addEventListener("click", () => {
+  const text = document.getElementById("pixelPrompt")?.value || "";
+  sendPayload({ type: "assistant_message", text });
+});
+
 function sendPayload(payload) {
   const serialized = JSON.stringify(payload);
   if (tg) {
