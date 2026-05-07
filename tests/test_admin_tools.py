@@ -3,9 +3,13 @@ from __future__ import annotations
 import zipfile
 
 from app.services.admin_tools import (
+    check_access_control,
     check_docker_compose,
+    check_memory_index,
+    check_pairing_first,
     check_secret_files,
     check_vault,
+    check_vault_gitignore,
     create_backup,
 )
 
@@ -17,11 +21,24 @@ def test_check_vault_creates_and_tests_directory(tmp_path) -> None:
     assert (tmp_path / "memory").exists()
 
 
+def test_check_memory_index_and_access_control(tmp_path) -> None:
+    assert check_memory_index(str(tmp_path)).ok is True
+    assert check_access_control(str(tmp_path), "open").ok is True
+
+
 def test_check_secret_files_requires_env_in_gitignore(tmp_path) -> None:
     (tmp_path / ".env").write_text("BOT_TOKEN=secret", encoding="utf-8")
     (tmp_path / ".gitignore").write_text(".env\n", encoding="utf-8")
 
     assert check_secret_files(str(tmp_path)).ok is True
+
+
+def test_security_audit_checks_pairing_and_vault_gitignore(tmp_path) -> None:
+    (tmp_path / ".gitignore").write_text(".env\nassistantbotmemory/\n", encoding="utf-8")
+
+    assert check_pairing_first("pairing").ok is True
+    assert check_pairing_first("open").ok is False
+    assert check_vault_gitignore(str(tmp_path)).ok is True
 
 
 def test_check_docker_compose_reports_restart_policy(tmp_path) -> None:

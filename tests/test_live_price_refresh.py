@@ -8,7 +8,7 @@ from app.services.live_price_refresh import StoreRefreshResult
 
 
 def test_build_live_price_queries_deduplicates_raw_items() -> None:
-    items = parse_basket("молоко 1 л\nМолоко 1 л\nсахар 1 кг")
+    items = parse_basket("2x молоко 1 л\nМолоко 1 л\nсахар 1 кг")
 
     assert live_price_refresh.build_live_price_queries(items) == ["молоко 1 л", "сахар 1 кг"]
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 PUNCT_RE = re.compile(r"[^\w\s%.,-]", re.UNICODE)
 SPACE_RE = re.compile(r"\s+")

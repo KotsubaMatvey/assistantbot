@@ -28,7 +28,11 @@ def test_exact_match() -> None:
 
 def test_similar_match() -> None:
     item = parse_basket("бананы 1 кг")[0]
-    matches = match_products(item, [product("бананы весовые", Decimal("1000"), "г")], mode="similar")
+    matches = match_products(
+        item,
+        [product("бананы весовые", Decimal("1000"), "г")],
+        mode="similar",
+    )
     assert matches[0].match_type == "similar"
 
 

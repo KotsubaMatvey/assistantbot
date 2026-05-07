@@ -9,12 +9,26 @@ from app.services.product_normalizer import normalize_product_text
 
 
 class MatchableProduct(Protocol):
-    raw_title: str
-    normalized_title: str
-    brand: str | None
-    category: str | None
-    quantity_value: Decimal | None
-    quantity_unit: str | None
+    @property
+    def id(self) -> int: ...
+
+    @property
+    def raw_title(self) -> str: ...
+
+    @property
+    def normalized_title(self) -> str: ...
+
+    @property
+    def brand(self) -> str | None: ...
+
+    @property
+    def category(self) -> str | None: ...
+
+    @property
+    def quantity_value(self) -> Decimal | None: ...
+
+    @property
+    def quantity_unit(self) -> str | None: ...
 
 
 @dataclass(frozen=True)
@@ -148,4 +162,3 @@ def match_products(
     if len(strict) >= min_results:
         return strict
     return [result for result in scored if result.match_type in {"exact", "strong", "similar"}]
-

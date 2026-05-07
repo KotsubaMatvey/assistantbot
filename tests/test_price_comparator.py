@@ -17,6 +17,7 @@ def offer(
     product_id: int,
     promo: str | None = None,
     card: str | None = None,
+    in_stock: bool | None = True,
 ) -> PriceOffer:
     store = StoreInfo(slug=store_slug, display_name=store_slug.title())
     product = ProductInfo(
@@ -37,7 +38,7 @@ def offer(
         price_type=PriceType.card if card else PriceType.promo if promo else PriceType.regular,
         unit_price=None,
         unit_price_unit=None,
-        in_stock=True,
+        in_stock=in_stock,
         scraped_at=datetime.now(UTC),
     )
 
@@ -75,3 +76,16 @@ def test_promo_missing_one_store_and_split() -> None:
     assert result.one_store_basket[0].found_items_count == 2
     assert result.split_basket.total_price == Decimal("160")
 
+
+def test_purchase_count_multiplies_totals_and_out_of_stock_is_ignored() -> None:
+    items = parse_basket("2x молоко 2.5 1 л")
+    offers = [
+        offer("smart", "молоко 2.5 1 л", "80", product_id=1, in_stock=False),
+        offer("magnit", "молоко 2.5 1 л", "90", product_id=2),
+    ]
+
+    result = compare_prices(items, settings(), offers)
+
+    assert result.per_item_best[0].offers[0].offer.store_product.store.slug == "magnit"
+    assert result.one_store_basket[0].total_price == Decimal("180")
+    assert result.split_basket.total_price == Decimal("180")

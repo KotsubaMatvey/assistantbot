@@ -99,3 +99,34 @@ def test_price_heads_up_mentions_memory_context(tmp_path) -> None:
 
     assert "Память:" in text
     assert "Магнит" in text
+
+
+def test_today_digest_reads_daily_memory(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    created = datetime(2026, 5, 6, 12, 30, tzinfo=UTC)
+    memory.remember_user_note(user_id=123, text="Нужно купить подарок.", created_at=created)
+
+    digest = memory.today_digest(user_id=123, created_at=created)
+
+    assert "Нужно купить подарок." in digest
+
+
+def test_list_open_tasks_skips_completed_notes(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    memory.remember_user_note(user_id=123, text="Нужно проверить документы.")
+    memory.remember_user_note(user_id=123, text="Нужно оплатить счет. Сделано.")
+
+    tasks = memory.list_open_tasks(user_id=123)
+
+    assert len(tasks) == 1
+    assert "проверить документы" in tasks[0].snippet
+
+
+def test_related_context_finds_saved_notes(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    memory.remember_user_note(user_id=123, text="Идея: собрать базу рецептов для ужинов.")
+
+    results = memory.related_context(user_id=123, text="рецепты")
+
+    assert results
+    assert "рецептов" in results[0].snippet

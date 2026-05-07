@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Assistant Bot Mini App</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Assistant Bot</p>
+          <h1>Пульт дня</h1>
+        </div>
+        <button class="icon-button" data-action="send" data-payload="status">
+          <span aria-hidden="true">↻</span>
+          <span class="sr-only">Обновить статус</span>
+        </button>
+      </header>
+
+      <nav class="tabs" aria-label="Разделы">
+        <button class="tab is-active" data-tab="shopping">Покупки</button>
+        <button class="tab" data-tab="markets">Рынки</button>
+        <button class="tab" data-tab="assistant">Ассистент</button>
+        <button class="tab" data-tab="memory">Память</button>
+      </nav>
+
+      <section class="panel is-active" id="shopping" aria-label="Покупки">
+        <div class="summary-strip">
+          <article>
+            <span>Корзина</span>
+            <strong>5 товаров</strong>
+          </article>
+          <article>
+            <span>Экономия</span>
+            <strong>312 ₽</strong>
+          </article>
+          <article>
+            <span>Свежесть</span>
+            <strong>18 мин</strong>
+          </article>
+        </div>
+
+        <div class="basket-composer">
+          <label for="basket">Список покупок</label>
+          <textarea id="basket" rows="5">2x молоко 2.5 1 л
+яйца C1 10 шт
+сахар 1 кг</textarea>
+          <button class="primary" data-action="basket">Сравнить цены</button>
+        </div>
+
+        <div class="list">
+          <article class="price-row">
+            <div>
+              <strong>Молоко 2.5 1 л × 2</strong>
+              <span>Лучше: Магнит, по акции</span>
+            </div>
+            <b>180 ₽</b>
+          </article>
+          <article class="price-row">
+            <div>
+              <strong>Яйца C1 10 шт</strong>
+              <span>Лучше: Smart, обычная цена</span>
+            </div>
+            <b>104 ₽</b>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel" id="markets" aria-label="Рынки">
+        <div class="hero-metric">
+          <span>BTC</span>
+          <strong>$70,240</strong>
+          <em>+1.45%</em>
+        </div>
+        <div class="market-grid">
+          <article><span>BTC.D</span><strong>53.2%</strong></article>
+          <article><span>S&P 500</span><strong>5,108</strong></article>
+          <article><span>Nasdaq</span><strong>16,340</strong></article>
+          <article><span>Dow Jones</span><strong>39,120</strong></article>
+        </div>
+        <button class="primary" data-action="send" data-payload="markets">
+          Запросить свежие рынки
+        </button>
+      </section>
+
+      <section class="panel" id="assistant" aria-label="Ассистент">
+        <div class="assistant-card">
+          <span class="status-dot"></span>
+          <div>
+            <h2>Secretary</h2>
+            <p>Следит за задачами, рынками, покупками и утренними дайджестами.</p>
+          </div>
+        </div>
+        <div class="command-grid">
+          <button data-action="send" data-payload="status">Status</button>
+          <button data-action="send" data-payload="compact">Compact</button>
+          <button data-action="send" data-payload="new">New</button>
+          <button data-action="send" data-payload="agenda">Agenda</button>
+        </div>
+      </section>
+
+      <section class="panel" id="memory" aria-label="Память">
+        <div class="timeline">
+          <article>
+            <time>08:00</time>
+            <p>Утренний market-watch отправлен в Telegram.</p>
+          </article>
+          <article>
+            <time>09:30</time>
+            <p>Корзина сохранена, цены обновлены по выбранным магазинам.</p>
+          </article>
+          <article>
+            <time>12:10</time>
+            <p>Сводка сессии добавлена в локальную память.</p>
+          </article>
+        </div>
+        <button class="primary" data-action="send" data-payload="agenda">Открыть agenda</button>
+      </section>
+    </main>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

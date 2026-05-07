@@ -4,10 +4,12 @@ import asyncio
 import re
 from abc import ABC, abstractmethod
 from decimal import Decimal, InvalidOperation
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import httpx
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 from app.config import get_settings
 from app.db.models import PriceType
@@ -118,14 +120,25 @@ class HtmlSearchScraper(StoreScraper):
             products = self.extract_products_from_html(response.text, url)
             return products[0] if products else None
         except Exception as exc:
-            logger.exception("scraper_product_failed", store_slug=self.store_slug, url=url, error=str(exc))
+            logger.exception(
+                "scraper_product_failed",
+                store_slug=self.store_slug,
+                url=url,
+                error=str(exc),
+            )
             return None
 
     def extract_products_from_html(self, html: str, page_url: str) -> list[ScrapedProduct]:
         soup = BeautifulSoup(html, "html.parser")
-        cards = soup.select("[data-product-id], article, .product, .catalog-item, .product-card")
+        cards: list[Tag] = list(
+            soup.select("[data-product-id], article, .product, .catalog-item, .product-card")
+        )
         if not cards:
-            cards = [tag.parent for tag in soup.find_all(string=PRICE_RE) if tag.parent is not None]
+            cards = [
+                tag.parent
+                for tag in soup.find_all(string=PRICE_RE)
+                if isinstance(tag.parent, Tag)
+            ]
 
         products: list[ScrapedProduct] = []
         seen: set[str] = set()
@@ -138,7 +151,8 @@ class HtmlSearchScraper(StoreScraper):
             if not title or len(title) < 3:
                 continue
             link = card.find("a", href=True)
-            source_url = urljoin(page_url, link["href"]) if link else page_url
+            href = link.get("href") if isinstance(link, Tag) else None
+            source_url = urljoin(page_url, href) if isinstance(href, str) else page_url
             key = f"{title}:{price}:{source_url}"
             if key in seen:
                 continue
@@ -149,9 +163,10 @@ class HtmlSearchScraper(StoreScraper):
             regular_price = price if price_type == PriceType.regular else None
             promo_price = price if price_type == PriceType.promo else None
             card_price = price if price_type in {PriceType.card, PriceType.promo_card} else None
+            external_id = _string_attr(card.get("data-product-id"))
             products.append(
                 ScrapedProduct(
-                    external_id=card.get("data-product-id"),
+                    external_id=external_id,
                     title=title,
                     source_url=source_url,
                     regular_price=regular_price,
@@ -168,7 +183,7 @@ class HtmlSearchScraper(StoreScraper):
             )
         return products
 
-    def _extract_title(self, card: object, text: str) -> str:
+    def _extract_title(self, card: Tag, text: str) -> str:
         for selector in ["[itemprop=name]", ".title", ".name", "h1", "h2", "h3", "a"]:
             found = card.select_one(selector) if hasattr(card, "select_one") else None
             if found:
@@ -177,6 +192,10 @@ class HtmlSearchScraper(StoreScraper):
                     return title
         price_match = PRICE_RE.search(text)
         return text[: price_match.start()].strip(" -–") if price_match else text[:120]
+
+
+def _string_attr(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 def parse_price(value: str) -> Decimal | None:

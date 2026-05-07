@@ -11,7 +11,9 @@ from app.db.models import User, UserSettings
 
 async def get_or_create_user(session: AsyncSession, telegram_user: TelegramUser) -> User:
     result = await session.execute(
-        select(User).options(selectinload(User.settings)).where(User.telegram_id == telegram_user.id)
+        select(User)
+        .options(selectinload(User.settings))
+        .where(User.telegram_id == telegram_user.id)
     )
     user = result.scalar_one_or_none()
     if user is None:
@@ -38,4 +40,3 @@ async def get_settings_for_user(session: AsyncSession, user_id: int) -> UserSett
         session.add(settings)
         await session.flush()
     return settings
-

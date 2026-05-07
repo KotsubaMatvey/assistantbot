@@ -16,13 +16,27 @@ def money(value: Decimal | None) -> str:
     return f"{value.quantize(Decimal('0.01'))} ₽"
 
 
-def _offer_line(offer: ComparedOffer) -> str:
+def compact_decimal(value: Decimal) -> str:
+    text = format(value.normalize(), "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _count_suffix(count: Decimal) -> str:
+    if count == Decimal("1"):
+        return ""
+    return f" × {compact_decimal(count)}"
+
+
+def _offer_line(offer: ComparedOffer, *, count: Decimal = Decimal("1")) -> str:
     store = offer.offer.store_product.store.display_name
     stale = ", данные могут быть устаревшими" if offer.is_stale else ""
     unit = ""
     if offer.offer.unit_price is not None and offer.offer.unit_price_unit:
         unit = f", {money(offer.offer.unit_price)} {offer.offer.unit_price_unit}"
-    return f"{store} — {money(offer.effective_price)} ({offer.price_label}{unit}{stale})"
+    subtotal = ""
+    if count != Decimal("1"):
+        subtotal = f", за {compact_decimal(count)} шт: {money(offer.effective_price * count)}"
+    return f"{store} — {money(offer.effective_price)} ({offer.price_label}{unit}{subtotal}{stale})"
 
 
 def _summary_lines(result: PriceComparisonResult) -> list[str]:
@@ -62,7 +76,8 @@ def format_price_comparison(result: PriceComparisonResult) -> str:
         lines.append("")
 
     for index, per_item in enumerate(result.per_item_best, start=1):
-        lines.append(f"{index}. {per_item.item.raw_text}")
+        count_suffix = _count_suffix(per_item.item.purchase_count)
+        lines.append(f"{index}. {per_item.item.raw_text}{count_suffix}")
         if not per_item.offers:
             lines.append(
                 f"Не нашел цену для: {per_item.item.raw_text}. "
@@ -71,11 +86,14 @@ def format_price_comparison(result: PriceComparisonResult) -> str:
             lines.append("")
             continue
         best = per_item.offers[0]
-        lines.append(f"Лучше: {_offer_line(best)}")
+        lines.append(f"Лучше: {_offer_line(best, count=per_item.item.purchase_count)}")
         others = per_item.offers[1:4]
         if others:
             lines.append("Другие:")
-            lines.extend(f"- {_offer_line(offer)}" for offer in others)
+            lines.extend(
+                f"- {_offer_line(offer, count=per_item.item.purchase_count)}"
+                for offer in others
+            )
         if best.match.match_type == "similar":
             lines.append(
                 "Комментарий: точное совпадение не найдено, показаны похожие товары."
@@ -92,7 +110,8 @@ def format_price_comparison(result: PriceComparisonResult) -> str:
                 notes.append(f"{total.promo_items_count} товара по акции")
             notes.extend(total.notes[:2])
             suffix = f", {', '.join(notes)}" if notes else ""
-            found = f"{total.found_items_count}/{total.found_items_count + total.missing_items_count}"
+            total_items = total.found_items_count + total.missing_items_count
+            found = f"{total.found_items_count}/{total_items}"
             lines.append(
                 f"{index}. {total.store.display_name} — "
                 f"{money(total.total_price)}, найдено {found}{suffix}"

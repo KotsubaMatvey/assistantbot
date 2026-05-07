@@ -22,7 +22,7 @@ async def main() -> None:
 
     bot = Bot(token=settings.bot_token)
     dispatcher = create_dispatcher()
-    scheduler = create_scheduler()
+    scheduler = create_scheduler(bot=bot)
     scheduler.start()
     await bot.set_my_commands(public_bot_commands())
     logger.info("bot_started", city=settings.city)

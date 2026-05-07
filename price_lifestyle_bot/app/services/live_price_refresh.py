@@ -38,7 +38,9 @@ def build_live_price_queries(items: list[BasketItemParsed]) -> list[str]:
     queries: list[str] = []
     seen: set[str] = set()
     for item in items:
-        query = item.raw_text.strip() or item.name.strip()
+        query = str(item.attributes.get("search_text", "")).strip()
+        if not query:
+            query = item.raw_text.strip() or item.name.strip()
         normalized = query.lower()
         if query and normalized not in seen:
             queries.append(query)

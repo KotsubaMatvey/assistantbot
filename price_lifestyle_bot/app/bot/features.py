@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from aiogram import Router
 
-from app.bot.handlers import admin, memory, settings, shopping, start
+from app.bot.handlers import admin, markets, memory, miniapp, settings, shopping, start
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,8 @@ FEATURE_REGISTRY: tuple[BotFeature, ...] = (
     BotFeature("onboarding", (start.router,), "start/help commands"),
     BotFeature("settings", (settings.router,), "store and loyalty preferences"),
     BotFeature("memory", (memory.router,), "obsidian-backed user memory"),
+    BotFeature("markets", (markets.router,), "global market watch"),
+    BotFeature("miniapp", (miniapp.router,), "Telegram Mini App payloads"),
     BotFeature("shopping", (shopping.router,), "basket parsing and price comparison"),
     BotFeature("admin", (admin.router,), "operator commands and scraping status"),
 )

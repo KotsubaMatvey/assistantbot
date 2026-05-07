@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import Any
 
 try:
     import structlog
@@ -39,7 +40,7 @@ def configure_logging() -> None:
     )
 
 
-def get_logger(name: str):
+def get_logger(name: str) -> Any:
     if structlog is None:
         return PlainLogger(name)
     return structlog.get_logger(name)

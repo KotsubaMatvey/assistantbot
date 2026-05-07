@@ -8,7 +8,7 @@ from typing import Any
 from app.db.models import PriceType
 from app.services.basket_parser import BasketItemParsed
 from app.services.loyalty import user_has_store_card
-from app.services.product_matcher import MatchResult, MatchableProduct, match_products
+from app.services.product_matcher import MatchableProduct, MatchResult, match_products
 
 
 @dataclass(frozen=True)
@@ -122,7 +122,9 @@ def _effective_price(offer: PriceOffer, settings: Any) -> tuple[Decimal, str, bo
     store_slug = offer.store_product.store.slug
     has_card = user_has_store_card(settings, store_slug)
     base_price = offer.promo_price or offer.regular_price or offer.final_price
-    price_type = str(offer.price_type.value if hasattr(offer.price_type, "value") else offer.price_type)
+    price_type = str(
+        offer.price_type.value if hasattr(offer.price_type, "value") else offer.price_type
+    )
 
     if offer.card_price is not None and has_card:
         label = "по карте"
@@ -179,6 +181,7 @@ def compare_prices(
         offer
         for offer in offers
         if not enabled_slugs or offer.store_product.store.slug in enabled_slugs
+        if offer.in_stock is not False
     ]
     products: list[MatchableProduct] = [offer.store_product for offer in filtered]
     offers_by_product_id = {offer.store_product.id: offer for offer in filtered}
@@ -188,7 +191,12 @@ def compare_prices(
     for item in items:
         matches = match_products(item, products, mode=mode)
         compared = [
-            _compared_offer(offers_by_product_id[match.store_product.id], match, settings, freshness_hours)
+            _compared_offer(
+                offers_by_product_id[match.store_product.id],
+                match,
+                settings,
+                freshness_hours,
+            )
             for match in matches
         ]
         strong = [offer for offer in compared if offer.match.match_type != "weak"]
@@ -198,7 +206,11 @@ def compare_prices(
 
     one_store = _build_one_store_basket(per_item)
     split = _build_split_basket(per_item, one_store)
-    return PriceComparisonResult(per_item_best=per_item, one_store_basket=one_store, split_basket=split)
+    return PriceComparisonResult(
+        per_item_best=per_item,
+        one_store_basket=one_store,
+        split_basket=split,
+    )
 
 
 def _build_one_store_basket(per_item: list[PerItemBest]) -> list[StoreBasketTotal]:
@@ -223,7 +235,7 @@ def _build_one_store_basket(per_item: list[PerItemBest]) -> list[StoreBasketTota
                 notes.append(f"не найден: {per.item.name}")
                 continue
             best = min(store_offers, key=lambda offer: offer.effective_price)
-            total += best.effective_price
+            total += best.effective_price * per.item.purchase_count
             found += 1
             card_count += int(best.used_card)
             promo_count += int("акция" in best.price_label)
@@ -254,7 +266,7 @@ def _build_split_basket(
             continue
         best = min(per.offers, key=lambda offer: offer.effective_price)
         picks.append((per.item, best))
-        total += best.effective_price
+        total += best.effective_price * per.item.purchase_count
         stores.add(best.offer.store_product.store.slug)
     best_single = next((store for store in one_store if store.missing_items_count == 0), None)
     savings = best_single.total_price - total if best_single is not None else None

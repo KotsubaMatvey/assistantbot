@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import re
+import socket
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
+
+MAX_REDIRECTS = 5
 
 
 @dataclass(frozen=True)
@@ -35,16 +40,18 @@ class FeedDigest:
 def validate_public_url(url: str) -> str:
     clean_url = url.strip()
     parsed = urlparse(clean_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.hostname is None:
         raise ValueError("URL должен начинаться с http:// или https://")
+    if parsed.username or parsed.password:
+        raise ValueError("URL не должен содержать логин или пароль")
+    _validate_public_host(parsed.hostname)
     return clean_url
 
 
 async def fetch_page_summary(url: str) -> PageSummary:
     clean_url = validate_public_url(url)
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-        response = await client.get(clean_url)
-        response.raise_for_status()
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+        response = await _get_public_url(client, clean_url)
     return extract_page_summary(response.text, clean_url)
 
 
@@ -94,11 +101,10 @@ def list_rss_subscriptions(vault_path: str, *, user_id: int) -> list[str]:
 
 async def fetch_feed_digests(feed_urls: list[str], *, limit_per_feed: int = 5) -> list[FeedDigest]:
     digests: list[FeedDigest] = []
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
         for feed_url in feed_urls:
             try:
-                response = await client.get(validate_public_url(feed_url))
-                response.raise_for_status()
+                response = await _get_public_url(client, validate_public_url(feed_url))
                 entries = parse_feed_entries(response.text, limit=limit_per_feed)
                 digests.append(FeedDigest(feed_url=feed_url, entries=entries))
             except Exception as exc:
@@ -182,3 +188,50 @@ def _local_name(tag: str) -> str:
 
 def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", BeautifulSoup(text, "html.parser").get_text(" ", strip=True))
+
+
+def _validate_public_host(hostname: str) -> None:
+    host = hostname.rstrip(".").lower()
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        if host == "localhost" or host.endswith(".localhost") or "." not in host:
+            raise ValueError("URL должен указывать на публичный домен") from None
+        return
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    ):
+        raise ValueError("URL не должен указывать на приватный или локальный адрес")
+
+
+async def _validate_public_resolution(hostname: str, port: int | None) -> None:
+    def resolve() -> list[str]:
+        addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        return [str(address[-1][0]) for address in addresses]
+
+    for address in await asyncio.to_thread(resolve):
+        _validate_public_host(address)
+
+
+async def _get_public_url(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    current_url = validate_public_url(url)
+    for _ in range(MAX_REDIRECTS + 1):
+        parsed = urlparse(current_url)
+        if parsed.hostname is None:
+            raise ValueError("URL должен содержать хост")
+        await _validate_public_resolution(parsed.hostname, parsed.port)
+        response = await client.get(current_url)
+        if not response.is_redirect:
+            response.raise_for_status()
+            return response
+        location = response.headers.get("location")
+        if not location:
+            response.raise_for_status()
+            return response
+        current_url = validate_public_url(urljoin(str(response.url), location))
+    raise ValueError("Слишком много перенаправлений")

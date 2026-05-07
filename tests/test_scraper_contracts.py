@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from app.db.models import PriceType
 from app.scrapers.registry import SCRAPER_CLASSES
 from app.scrapers.types import ScrapedProduct

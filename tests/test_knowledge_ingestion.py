@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+
+import app.services.knowledge_ingestion as knowledge_ingestion
+import httpx
+import pytest
 from app.services.knowledge_ingestion import (
     add_rss_subscription,
     extract_page_summary,
     format_feed_digests,
     parse_feed_entries,
+    validate_public_url,
 )
 
 
@@ -68,6 +74,41 @@ def test_add_rss_subscription_deduplicates_urls(tmp_path) -> None:
     path = add_rss_subscription(str(tmp_path), user_id=123, feed_url="https://example.com/feed.xml")
 
     assert path.read_text(encoding="utf-8").splitlines() == ["https://example.com/feed.xml"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com/feed.xml",
+        "https://localhost/feed.xml",
+        "https://postgres/feed.xml",
+        "http://127.0.0.1/feed.xml",
+        "http://10.0.0.1/feed.xml",
+        "http://[::1]/feed.xml",
+        "https://user:password@example.com/feed.xml",
+    ],
+)
+def test_validate_public_url_rejects_non_public_targets(url: str) -> None:
+    with pytest.raises(ValueError):
+        validate_public_url(url)
+
+
+def test_get_public_url_rejects_private_redirect(monkeypatch) -> None:
+    async def fake_resolution(hostname: str, port: int | None) -> None:
+        return None
+
+    class FakeClient:
+        async def get(self, url: str) -> httpx.Response:
+            return httpx.Response(
+                302,
+                headers={"location": "http://127.0.0.1/admin"},
+                request=httpx.Request("GET", url),
+            )
+
+    monkeypatch.setattr(knowledge_ingestion, "_validate_public_resolution", fake_resolution)
+
+    with pytest.raises(ValueError):
+        asyncio.run(knowledge_ingestion._get_public_url(FakeClient(), "https://example.com/feed"))
 
 
 def test_format_feed_digests_handles_empty_list() -> None:

@@ -6,8 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import BotMessage, BotSession, User
 
 
-def build_session_key(*, platform: str, chat_id: int | str, user_id: int) -> str:
-    return f"{platform}:{chat_id}:user:{user_id}"
+def build_session_key(
+    *,
+    platform: str,
+    chat_id: int | str,
+    user_id: int,
+    session_epoch: int = 0,
+) -> str:
+    suffix = f":epoch:{session_epoch}" if session_epoch > 0 else ""
+    return f"{platform}:{chat_id}:user:{user_id}{suffix}"
 
 
 async def get_or_create_bot_session(
@@ -16,8 +23,14 @@ async def get_or_create_bot_session(
     user: User,
     platform: str,
     chat_id: int | str,
+    session_epoch: int = 0,
 ) -> BotSession:
-    session_key = build_session_key(platform=platform, chat_id=chat_id, user_id=user.id)
+    session_key = build_session_key(
+        platform=platform,
+        chat_id=chat_id,
+        user_id=user.id,
+        session_epoch=session_epoch,
+    )
     result = await session.execute(select(BotSession).where(BotSession.session_key == session_key))
     bot_session = result.scalar_one_or_none()
     if bot_session is None:

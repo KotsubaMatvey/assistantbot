@@ -6,6 +6,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from app.bot.message_utils import answer_long
 from app.config import get_settings
 from app.db.repositories.baskets import create_basket, get_latest_basket_for_user
 from app.db.repositories.prices import get_latest_prices_by_store_products
@@ -113,7 +114,7 @@ async def _handle_basket(message: Message, text: str) -> None:
     comparison = format_price_comparison(result)
     if heads_up:
         comparison = f"{heads_up}\n\n{comparison}"
-    await message.answer(comparison, disable_web_page_preview=True)
+    await answer_long(message, comparison, disable_web_page_preview=True)
 
 
 def _selected_store_slugs(user_settings: object) -> list[str]:

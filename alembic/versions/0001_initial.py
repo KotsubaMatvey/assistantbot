@@ -8,8 +8,9 @@ Create Date: 2026-04-29 00:00:00.000000
 from __future__ import annotations
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "0001_initial"
 down_revision = None
@@ -88,7 +89,12 @@ def upgrade() -> None:
     op.create_table(
         "user_settings",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id",
+            sa.Integer(),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column(
             "enabled_store_slugs",
             postgresql.JSONB(astext_type=sa.Text()),
@@ -108,7 +114,12 @@ def upgrade() -> None:
     op.create_table(
         "store_products",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("store_id", sa.Integer(), sa.ForeignKey("stores.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "store_id",
+            sa.Integer(),
+            sa.ForeignKey("stores.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("external_id", sa.String(length=255), nullable=True),
         sa.Column("source_url", sa.String(length=1000), nullable=True),
         sa.Column("raw_title", sa.String(length=1000), nullable=False),
@@ -118,7 +129,12 @@ def upgrade() -> None:
         sa.Column("quantity_value", sa.Numeric(12, 3), nullable=True),
         sa.Column("quantity_unit", sa.String(length=32), nullable=True),
         sa.Column("barcode", sa.String(length=64), nullable=True),
-        sa.Column("product_id", sa.Integer(), sa.ForeignKey("products.id", ondelete="SET NULL"), nullable=True),
+        sa.Column(
+            "product_id",
+            sa.Integer(),
+            sa.ForeignKey("products.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -155,7 +171,12 @@ def upgrade() -> None:
     op.create_table(
         "baskets",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id",
+            sa.Integer(),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("raw_text", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
@@ -163,7 +184,12 @@ def upgrade() -> None:
     op.create_table(
         "basket_items",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("basket_id", sa.Integer(), sa.ForeignKey("baskets.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "basket_id",
+            sa.Integer(),
+            sa.ForeignKey("baskets.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("raw_text", sa.String(length=1000), nullable=False),
         sa.Column("parsed_name", sa.String(length=1000), nullable=False),
         sa.Column("desired_quantity_value", sa.Numeric(12, 3), nullable=True),
@@ -174,7 +200,12 @@ def upgrade() -> None:
     op.create_table(
         "scrape_runs",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("store_id", sa.Integer(), sa.ForeignKey("stores.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "store_id",
+            sa.Integer(),
+            sa.ForeignKey("stores.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("status", scrape_run_status, nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),

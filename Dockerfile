@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,4 +18,3 @@ COPY alembic.ini ./alembic.ini
 RUN pip install --no-cache-dir -e .
 
 CMD ["python", "-m", "app.main"]
-

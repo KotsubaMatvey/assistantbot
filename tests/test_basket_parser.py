@@ -27,3 +27,10 @@ def test_parse_eggs_grade_and_count() -> None:
     assert item.quantity_unit == "шт"
     assert item.attributes["grade"] == "C1"
 
+
+def test_parse_purchase_multiplier_without_polluting_search_text() -> None:
+    item = parse_basket("2x молоко 2.5 1 л")[0]
+
+    assert item.name == "молоко"
+    assert item.purchase_count == Decimal("2")
+    assert item.attributes["search_text"] == "молоко 2.5 1 л"

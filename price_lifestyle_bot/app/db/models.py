@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import enum
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -11,20 +11,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, utc_now
 
 
-class ComparisonMode(str, enum.Enum):
+class ComparisonMode(StrEnum):
     strict = "strict"
     similar = "similar"
     mixed = "mixed"
 
 
-class ParserStatus(str, enum.Enum):
+class ParserStatus(StrEnum):
     active = "active"
     partial = "partial"
     disabled = "disabled"
     broken = "broken"
 
 
-class PriceType(str, enum.Enum):
+class PriceType(StrEnum):
     regular = "regular"
     promo = "promo"
     card = "card"
@@ -32,14 +32,14 @@ class PriceType(str, enum.Enum):
     unknown = "unknown"
 
 
-class PriceSource(str, enum.Enum):
+class PriceSource(StrEnum):
     website = "website"
     app_public_api = "app_public_api"
     html = "html"
     manual_seed = "manual_seed"
 
 
-class ScrapeRunStatus(str, enum.Enum):
+class ScrapeRunStatus(StrEnum):
     started = "started"
     success = "success"
     partial = "partial"
@@ -56,9 +56,9 @@ class User(Base, TimestampMixin):
     language_code: Mapped[str | None] = mapped_column(String(16))
     city: Mapped[str] = mapped_column(String(255), default="Бор")
 
-    settings: Mapped["UserSettings"] = relationship(back_populates="user", uselist=False)
-    baskets: Mapped[list["Basket"]] = relationship(back_populates="user")
-    bot_sessions: Mapped[list["BotSession"]] = relationship(back_populates="user")
+    settings: Mapped[UserSettings] = relationship(back_populates="user", uselist=False)
+    baskets: Mapped[list[Basket]] = relationship(back_populates="user")
+    bot_sessions: Mapped[list[BotSession]] = relationship(back_populates="user")
 
 
 class UserSettings(Base, TimestampMixin):
@@ -96,8 +96,8 @@ class Store(Base, TimestampMixin):
         Enum(ParserStatus, name="parser_status"), default=ParserStatus.partial
     )
 
-    products: Mapped[list["StoreProduct"]] = relationship(back_populates="store")
-    scrape_runs: Mapped[list["ScrapeRun"]] = relationship(back_populates="store")
+    products: Mapped[list[StoreProduct]] = relationship(back_populates="store")
+    scrape_runs: Mapped[list[ScrapeRun]] = relationship(back_populates="store")
 
 
 class Product(Base, TimestampMixin):
@@ -112,7 +112,7 @@ class Product(Base, TimestampMixin):
     barcode: Mapped[str | None] = mapped_column(String(64))
     normalized_key: Mapped[str | None] = mapped_column(String(500))
 
-    store_products: Mapped[list["StoreProduct"]] = relationship(back_populates="product")
+    store_products: Mapped[list[StoreProduct]] = relationship(back_populates="product")
 
 
 class StoreProduct(Base, TimestampMixin):
@@ -138,7 +138,7 @@ class StoreProduct(Base, TimestampMixin):
 
     store: Mapped[Store] = relationship(back_populates="products")
     product: Mapped[Product | None] = relationship(back_populates="store_products")
-    prices: Mapped[list["PriceSnapshot"]] = relationship(back_populates="store_product")
+    prices: Mapped[list[PriceSnapshot]] = relationship(back_populates="store_product")
 
 
 class PriceSnapshot(Base):
@@ -149,7 +149,9 @@ class PriceSnapshot(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    store_product_id: Mapped[int] = mapped_column(ForeignKey("store_products.id", ondelete="CASCADE"))
+    store_product_id: Mapped[int] = mapped_column(
+        ForeignKey("store_products.id", ondelete="CASCADE")
+    )
     regular_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     old_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     promo_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
@@ -176,7 +178,7 @@ class Basket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped[User] = relationship(back_populates="baskets")
-    items: Mapped[list["BasketItem"]] = relationship(back_populates="basket")
+    items: Mapped[list[BasketItem]] = relationship(back_populates="basket")
 
 
 class BasketItem(Base):
@@ -224,7 +226,7 @@ class BotSession(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     user: Mapped[User] = relationship(back_populates="bot_sessions")
-    messages: Mapped[list["BotMessage"]] = relationship(back_populates="session")
+    messages: Mapped[list[BotMessage]] = relationship(back_populates="session")
 
 
 class BotMessage(Base):

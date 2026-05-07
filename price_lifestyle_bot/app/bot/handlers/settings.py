@@ -41,7 +41,8 @@ async def toggle_store(callback: CallbackQuery) -> None:
             enabled.add(slug)
         user_settings.enabled_store_slugs = list(enabled)
         await session.commit()
-    await callback.message.edit_reply_markup(reply_markup=settings_keyboard(list(enabled)))
+    if isinstance(callback.message, Message):
+        await callback.message.edit_reply_markup(reply_markup=settings_keyboard(list(enabled)))
     await callback.answer()
 
 
@@ -79,4 +80,3 @@ def _settings_text(settings: object) -> str:
         f"Магазины: {stores or 'не выбраны'}\n"
         f"Режим сравнения: {getattr(settings, 'comparison_mode', 'mixed')}"
     )
-

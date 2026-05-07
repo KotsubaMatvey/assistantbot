@@ -4,10 +4,14 @@ import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from app.services.product_normalizer import extract_fat_percent, extract_quantity, clean_text
+from app.services.product_normalizer import clean_text, extract_fat_percent, extract_quantity
 
 SPLIT_RE = re.compile(r"[\n;]+|,\s*(?=[^\d])")
 GRADE_RE = re.compile(r"\b[сc]\s?([0-3])\b", re.IGNORECASE)
+COUNT_RE = re.compile(
+    r"(?:(?<=^)|(?<=\s))(?:(?P<prefix>\d+(?:[.,]\d+)?)\s*[xх×]|[xх×*]\s*(?P<suffix>\d+(?:[.,]\d+)?))(?=\s|$)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -16,6 +20,7 @@ class BasketItemParsed:
     name: str
     quantity_value: Decimal | None
     quantity_unit: str | None
+    purchase_count: Decimal = Decimal("1")
     attributes: dict[str, object] = field(default_factory=dict)
 
 
@@ -28,11 +33,24 @@ def _strip_quantity(text: str) -> str:
     )
 
 
+def _extract_purchase_count(text: str) -> tuple[Decimal, str]:
+    match = COUNT_RE.search(text)
+    if match is None:
+        return Decimal("1"), text
+    raw_value = match.group("prefix") or match.group("suffix") or "1"
+    count = Decimal(raw_value.replace(",", "."))
+    if count <= 0:
+        return Decimal("1"), text
+    without_count = (text[: match.start()] + " " + text[match.end() :]).strip()
+    return count, re.sub(r"\s+", " ", without_count)
+
+
 def parse_basket(text: str) -> list[BasketItemParsed]:
     parts = [part.strip() for part in SPLIT_RE.split(text) if part.strip()]
     items: list[BasketItemParsed] = []
     for raw in parts:
-        cleaned = clean_text(raw)
+        count, countless = _extract_purchase_count(raw)
+        cleaned = clean_text(countless)
         quantity_value, quantity_unit = extract_quantity(cleaned)
         grade_match = GRADE_RE.search(cleaned)
         name = _strip_quantity(cleaned)
@@ -44,6 +62,7 @@ def parse_basket(text: str) -> list[BasketItemParsed]:
             attributes["fat_percent"] = fat_percent
         if grade_match is not None:
             attributes["grade"] = f"C{grade_match.group(1)}"
+        attributes["search_text"] = cleaned
         tokens = cleaned.split()
         if tokens and tokens[0].isalpha() and tokens[0] not in {"молоко", "яйца", "сахар", "кофе"}:
             attributes["brand_candidate"] = tokens[0]
@@ -53,8 +72,8 @@ def parse_basket(text: str) -> list[BasketItemParsed]:
                 name=name or cleaned,
                 quantity_value=quantity_value,
                 quantity_unit=quantity_unit,
+                purchase_count=count,
                 attributes=attributes,
             )
         )
     return items
-
