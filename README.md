@@ -184,10 +184,10 @@ Admin-команды доступны только Telegram ID из `ADMIN_TELEG
 
 ## Telegram Mini App
 
-Прототип интерфейса лежит в `miniapp/`. Это статический frontend для пульта бота:
+Интерфейс лежит в `miniapp/`. Это Vite + React + TypeScript frontend для пульта бота:
 покупки, рынки, ассистент, память, pantry, budget и price alerts. Чтобы подключить его к Telegram:
 
-1. задеплойте `miniapp/` как HTTPS static site;
+1. задеплойте `miniapp/` как Vite static app;
 2. пропишите `TG_MINI_APP_URL` в `.env`;
 3. перезапустите бота и откройте `/mini_app`.
 
