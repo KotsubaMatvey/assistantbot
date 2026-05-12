@@ -102,6 +102,30 @@ async def task_handler(message: Message) -> None:
     await message.answer(f"Задача сохранена. ID: {path.stem}")
 
 
+@router.message(Command("preference"))
+async def preference_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    text = (message.text or "").partition(" ")[2].strip()
+    if not text:
+        await message.answer("Использование: /preference <предпочтение>")
+        return
+
+    memory = ObsidianMemory(get_settings().obsidian_vault_path)
+    active_space = memory.get_active_space(message.from_user.id)
+    space, body = parse_space_prefix(text, default_space=active_space)
+    path = memory.remember_preference(user_id=message.from_user.id, text=body, space=space)
+    await message.answer(f"Предпочтение сохранено: {path.name}")
+
+
+@router.message(Command("lifestyle_context"))
+async def lifestyle_context_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    memory = ObsidianMemory(get_settings().obsidian_vault_path)
+    await message.answer(memory.format_lifestyle_context(user_id=message.from_user.id))
+
+
 @router.message(Command("journal"))
 async def journal_handler(message: Message) -> None:
     if message.from_user is None:

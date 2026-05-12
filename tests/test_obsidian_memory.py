@@ -130,3 +130,32 @@ def test_related_context_finds_saved_notes(tmp_path) -> None:
 
     assert results
     assert "рецептов" in results[0].snippet
+
+
+def test_lifestyle_context_links_preferences_decisions_and_baskets(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    created = datetime(2026, 5, 6, 12, 30, tzinfo=UTC)
+    items = parse_basket("молоко 1 л\nкофе 95 г")
+
+    memory.remember_preference(
+        user_id=123,
+        text="Предпочитаю молоко 2.5 и не люблю переплачивать за кофе.",
+        created_at=created,
+    )
+    memory.create_decision_note(
+        user_id=123,
+        prompt="Выбрать магазин; Smart; Магнит",
+        created_at=created,
+    )
+    memory.remember_basket(user_id=123, raw_text="молоко 1 л\nкофе 95 г", items=items)
+    memory.remember_basket(user_id=123, raw_text="молоко 1 л\nкофе 95 г", items=items)
+
+    context = memory.build_lifestyle_context(user_id=123)
+    text = memory.format_lifestyle_context(user_id=123)
+    focus = memory.lifestyle_focus_notes(user_id=123)
+
+    assert context.preferences
+    assert context.decisions
+    assert context.frequent_items == ["молоко", "кофе"]
+    assert "Предпочтения:" in text
+    assert any("Предпочтение:" in note for note in focus)

@@ -41,6 +41,10 @@ def test_format_includes_summary_disclaimer_and_price_type() -> None:
                 unit_price_unit=None,
                 in_stock=True,
                 scraped_at=datetime.now(UTC),
+                history_average_price=Decimal("120"),
+                history_min_price=Decimal("100"),
+                history_max_price=Decimal("130"),
+                history_samples_count=3,
             )
         ],
     )
@@ -49,6 +53,9 @@ def test_format_includes_summary_disclaimer_and_price_type() -> None:
     assert "Лучший один магазин" in text
     assert PRICE_DISCLAIMER in text
     assert "по карте" in text
+    assert "109.00 ₽ руб/л" in text
+    assert "совпадение" in text
+    assert "дешевле обычного" in text
 
 
 def test_format_includes_purchase_multiplier_subtotal() -> None:

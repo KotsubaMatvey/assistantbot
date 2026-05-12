@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db.models import User
-from app.db.repositories.prices import get_latest_prices_by_store_products
+from app.db.repositories.prices import get_latest_prices_by_store_products, get_price_history_stats
 from app.db.repositories.users import get_settings_for_user
 from app.db.session import SessionLocal
 from app.logging_config import get_logger
@@ -33,7 +33,7 @@ from app.services.price_alerts import (
     evaluate_price_alerts,
     format_price_alert_hits,
 )
-from app.services.price_comparator import offer_from_snapshot
+from app.services.price_comparator import offer_from_snapshot_with_history
 from app.services.spending import SpendingStore, format_budget_summary
 
 if TYPE_CHECKING:
@@ -78,7 +78,16 @@ async def _refresh_all_prices() -> None:
     from app.scripts.refresh_prices import refresh_all_prices
 
     try:
-        await refresh_all_prices()
+        result = await refresh_all_prices()
+        if result.degraded_store_slugs:
+            logger.warning(
+                "scheduled_refresh_degraded",
+                degraded_stores=result.degraded_store_slugs,
+                failed_stores=result.failed_store_slugs,
+                partial_stores=result.partial_store_slugs,
+                products=result.total_products_found,
+                prices=result.total_prices_found,
+            )
     except Exception as exc:
         logger.exception("scheduled_refresh_failed", error=str(exc))
 
@@ -108,7 +117,7 @@ async def _send_due_jobs(bot: Bot) -> None:
             output = await _job_output(job, memory=memory)
             if output:
                 await bot.send_message(job.user_id, output[:3900])
-            jobs.record_run(job=job, ok=True, detail=job.delivery_mode)
+            jobs.record_run(job=job, ok=True, detail=_job_run_detail(job, output))
         except Exception as exc:
             jobs.record_run(job=job, ok=False, detail=str(exc))
             logger.exception(
@@ -158,6 +167,11 @@ async def _job_output(job: AssistantJob, *, memory: ObsidianMemory) -> str:
     return f"Запланированная задача:\n{message}"
 
 
+def _job_run_detail(job: AssistantJob, output: str) -> str:
+    sent = bool(output)
+    return f"{job.delivery_mode}; sent={str(sent).lower()}; chars={min(len(output), 3900)}"
+
+
 async def _price_alert_output(*, user_id: int) -> str:
     settings = get_settings()
     alerts = PriceAlertStore(settings.obsidian_vault_path).list_alerts(user_id=user_id)
@@ -171,7 +185,14 @@ async def _price_alert_output(*, user_id: int) -> str:
             else SimpleNamespace(enabled_store_slugs=[], comparison_mode="mixed")
         )
         snapshots = await get_latest_prices_by_store_products(session)
-    offers = [offer_from_snapshot(snapshot) for snapshot in snapshots]
+        history = await get_price_history_stats(
+            session,
+            store_product_ids=[snapshot.store_product_id for snapshot in snapshots],
+        )
+    offers = [
+        offer_from_snapshot_with_history(snapshot, history.get(snapshot.store_product_id))
+        for snapshot in snapshots
+    ]
     hits = evaluate_price_alerts(
         alerts,
         settings=user_settings,
@@ -202,5 +223,6 @@ async def _morning_output(*, user_id: int, memory: ObsidianMemory) -> str:
         price_alerts=await _price_alert_output(user_id=user_id),
         pantry=pantry,
         budget=budget,
+        notes=memory.lifestyle_focus_notes(user_id=user_id),
     )
     return format_daily_brief(brief)

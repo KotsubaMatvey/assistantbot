@@ -8,10 +8,13 @@ from app.db.models import PriceType
 from app.services.assistant_jobs import AssistantJobStore
 from app.services.assistant_personas import format_personas, get_persona
 from app.services.automation import enable_automation, list_automation_templates
+from app.services.basket_parser import parse_basket
 from app.services.daily_brief import DailyBrief, format_daily_brief
 from app.services.family import FamilyStore
 from app.services.pantry import PantryStore, parse_pantry_item
 from app.services.price_alerts import (
+    CONDITION_BELOW_AVERAGE,
+    CONDITION_DISCOUNT_PERCENT,
     PriceAlertStore,
     evaluate_price_alerts,
     parse_price_alert_request,
@@ -41,7 +44,7 @@ def test_pantry_add_consume_expiring_and_suggestions(tmp_path) -> None:
 
 def test_spending_receipt_and_budget_summary(tmp_path) -> None:
     receipt_store = SpendingStore(str(tmp_path))
-    store_name, items = parse_receipt_text("магазин: Smart\nмолоко 100.50\nхлеб 45")
+    store_name, items = parse_receipt_text("магазин: Smart\nмолоко 100.50\nхлеб 45\nкофе 300")
     receipt_store.add_receipt(
         user_id=123,
         store=store_name,
@@ -52,9 +55,32 @@ def test_spending_receipt_and_budget_summary(tmp_path) -> None:
 
     summary = receipt_store.budget_summary(user_id=123, month="2026-05")
 
-    assert summary.spent == Decimal("145.50")
-    assert summary.remaining == Decimal("854.50")
+    assert summary.spent == Decimal("445.50")
+    assert summary.remaining == Decimal("554.50")
     assert summary.top_items[0] == ("молоко", 1)
+    assert summary.category_totals[0] == ("напитки", Decimal("300"))
+    assert items[0].category == "молочные"
+
+
+def test_spending_plan_vs_actual(tmp_path) -> None:
+    receipt_store = SpendingStore(str(tmp_path))
+    _, items = parse_receipt_text("молоко 100\nкофе 300\nшоколад 90")
+    receipt_store.add_receipt(
+        user_id=123,
+        store="Smart",
+        items=items,
+        purchased_at=datetime(2026, 5, 8, 9, 0, tzinfo=UTC),
+    )
+
+    report = receipt_store.plan_vs_actual(
+        user_id=123,
+        planned_items=parse_basket("молоко 1 л\nхлеб"),
+        month="2026-05",
+    )
+
+    assert report.matched[0].name == "молоко"
+    assert report.missing == ["хлеб"]
+    assert report.unplanned[0].name == "кофе"
 
 
 def test_price_alerts_evaluate_current_offers(tmp_path) -> None:
@@ -96,6 +122,60 @@ def test_price_alerts_evaluate_current_offers(tmp_path) -> None:
 
     assert hits[0].alert.id == alert.id
     assert hits[0].price == Decimal("89")
+
+
+def test_price_alerts_parse_smart_conditions() -> None:
+    average = parse_price_alert_request("молоко 2.5 1 л ниже обычного")
+    discount = parse_price_alert_request("кофе 95 г скидка > 20%")
+
+    assert average.item_text == "молоко 2.5 1 л"
+    assert average.condition == CONDITION_BELOW_AVERAGE
+    assert discount.item_text == "кофе 95 г"
+    assert discount.condition == CONDITION_DISCOUNT_PERCENT
+    assert discount.discount_percent == Decimal("20")
+
+
+def test_price_alerts_evaluate_below_average_history(tmp_path) -> None:
+    spec = parse_price_alert_request("молоко 2.5 1 л ниже обычного")
+    alert = PriceAlertStore(str(tmp_path)).add_alert(
+        user_id=123,
+        item_text=spec.item_text,
+        condition=spec.condition,
+    )
+
+    hits = evaluate_price_alerts(
+        [alert],
+        settings=SimpleNamespace(enabled_store_slugs=["smart"], comparison_mode="mixed"),
+        offers=[
+            PriceOffer(
+                store_product=ProductInfo(
+                    id=1,
+                    store=StoreInfo(slug="smart", display_name="Smart"),
+                    raw_title="молоко 2.5 1 л",
+                    normalized_title="молоко 2.5 1 л",
+                    quantity_value=Decimal("1000"),
+                    quantity_unit="мл",
+                ),
+                regular_price=Decimal("89"),
+                old_price=None,
+                promo_price=None,
+                card_price=None,
+                final_price=Decimal("89"),
+                price_type=PriceType.regular,
+                unit_price=None,
+                unit_price_unit=None,
+                in_stock=True,
+                scraped_at=datetime.now(UTC),
+                history_average_price=Decimal("100"),
+                history_min_price=Decimal("89"),
+                history_max_price=Decimal("120"),
+                history_samples_count=3,
+            )
+        ],
+        freshness_hours=24,
+    )
+
+    assert hits[0].reason.startswith("минимум за период")
 
 
 def test_family_automation_personas_and_daily_brief(tmp_path) -> None:

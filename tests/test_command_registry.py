@@ -15,9 +15,11 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
     assert "pantry_add" in commands
     assert "pantry_use" in commands
     assert "pantry_plan" in commands
+    assert "pantry_deals" in commands
     assert "receipt" in commands
     assert "budget" in commands
     assert "budget_set" in commands
+    assert "budget_plan" in commands
     assert "family" in commands
     assert "family_create" in commands
     assert "family_join" in commands
@@ -61,6 +63,8 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
     assert "jobs" in commands
     assert "job_runs" in commands
     assert "job_delete" in commands
+    assert "preference" in commands
+    assert "lifestyle_context" in commands
     assert "task" in commands
     assert "journal" in commands
     assert "digest" in commands

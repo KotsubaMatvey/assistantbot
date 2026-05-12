@@ -8,14 +8,13 @@ from app.db.session import SessionLocal, dispose_engine
 
 
 async def main() -> None:
-    async with SessionLocal() as session:
-        await seed_stores(session, get_settings().city)
-        await session.commit()
+    try:
+        async with SessionLocal() as session:
+            await seed_stores(session, get_settings().city)
+            await session.commit()
+    finally:
+        await dispose_engine()
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    finally:
-        asyncio.run(dispose_engine())
-
+    asyncio.run(main())

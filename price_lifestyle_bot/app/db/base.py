@@ -15,7 +15,7 @@ NAMING_CONVENTION = {
 
 
 def utc_now() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -25,4 +25,3 @@ class Base(DeclarativeBase):
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
-

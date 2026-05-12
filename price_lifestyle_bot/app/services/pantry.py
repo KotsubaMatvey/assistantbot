@@ -8,6 +8,8 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from app.services.price_comparator import ComparedOffer, PriceComparisonResult
+
 
 @dataclass(frozen=True)
 class PantryItem:
@@ -181,6 +183,39 @@ def format_pantry_suggestions(suggestions: list[str]) -> str:
     return "Можно докупить:\n" + "\n".join(f"- {item}" for item in suggestions)
 
 
+def format_pantry_price_suggestions(
+    suggestions: list[str],
+    result: PriceComparisonResult,
+) -> str:
+    if not suggestions:
+        return "Базовые продукты на складе есть."
+    lines = ["Что докупить выгодно сейчас:"]
+    found = False
+    for per_item in result.per_item_best:
+        if not per_item.offers:
+            lines.append(f"- {per_item.item.raw_text}: цену пока не нашёл")
+            continue
+        found = True
+        best = per_item.offers[0]
+        lines.append(f"- {per_item.item.raw_text}: {_deal_line(best)}")
+    if not found:
+        lines.append("Цен по этим продуктам пока нет. Попробуй обновить цены позже.")
+    return "\n".join(lines)
+
+
+def _deal_line(offer: ComparedOffer) -> str:
+    store = offer.offer.store_product.store.display_name
+    unit = ""
+    if offer.effective_unit_price is not None and offer.effective_unit_price_unit:
+        unit = f", {_money(offer.effective_unit_price)} {offer.effective_unit_price_unit}"
+    trend = ""
+    if offer.price_trend_label != "истории мало":
+        trend = f", {offer.price_trend_label}"
+        if offer.price_delta_percent is not None:
+            trend += f" ({_format_decimal(offer.price_delta_percent)}%)"
+    return f"{store} — {_money(offer.effective_price)} ({offer.price_label}{unit}{trend})"
+
+
 def _decimal_or_none(value: str) -> Decimal | None:
     try:
         return Decimal(value.replace(",", "."))
@@ -191,6 +226,10 @@ def _decimal_or_none(value: str) -> Decimal | None:
 def _format_decimal(value: Decimal) -> str:
     text = format(value.normalize(), "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _money(value: Decimal) -> str:
+    return f"{value.quantize(Decimal('0.01'))} ₽"
 
 
 def _item_to_dict(item: PantryItem) -> dict[str, object]:

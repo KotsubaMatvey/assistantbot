@@ -8,9 +8,11 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.config import get_settings
-from app.db.repositories.prices import get_latest_prices_by_store_products
+from app.db.repositories.baskets import get_latest_basket_for_user
+from app.db.repositories.prices import get_latest_prices_by_store_products, get_price_history_stats
 from app.db.repositories.users import get_or_create_user, get_settings_for_user
 from app.db.session import SessionLocal
+from app.scrapers.registry import list_scrapers
 from app.services.agenda import build_agenda
 from app.services.assistant_jobs import AssistantJobStore
 from app.services.assistant_personas import format_personas, get_persona
@@ -20,28 +22,38 @@ from app.services.automation import (
     format_automations,
     list_automation_templates,
 )
+from app.services.basket_parser import parse_basket
 from app.services.daily_brief import DailyBrief, format_daily_brief
 from app.services.family import FamilyStore, format_family
+from app.services.live_price_refresh import refresh_prices_for_items
 from app.services.market_watch import fetch_market_watch, format_market_watch
 from app.services.obsidian_memory import ObsidianMemory
 from app.services.pantry import (
     PantryStore,
     format_pantry,
+    format_pantry_price_suggestions,
     format_pantry_suggestions,
     parse_pantry_item,
 )
 from app.services.price_alerts import (
     PriceAlertStore,
     evaluate_price_alerts,
+    format_price_alert_condition,
     format_price_alert_hits,
     format_price_alerts,
     parse_price_alert_request,
 )
-from app.services.price_comparator import offer_from_snapshot
+from app.services.price_comparator import (
+    PriceComparisonResult,
+    SplitBasket,
+    compare_prices,
+    offer_from_snapshot_with_history,
+)
 from app.services.spending import (
     SpendingStore,
     current_month,
     format_budget_summary,
+    format_plan_vs_actual,
     format_receipt,
     parse_receipt_text,
 )
@@ -54,18 +66,20 @@ async def watch_price_handler(message: Message) -> None:
     if message.from_user is None:
         return
     try:
-        item_text, threshold = parse_price_alert_request(
-            (message.text or "").partition(" ")[2]
-        )
+        spec = parse_price_alert_request((message.text or "").partition(" ")[2])
     except ValueError as exc:
         await message.answer(str(exc))
         return
     alert = PriceAlertStore(get_settings().obsidian_vault_path).add_alert(
         user_id=message.from_user.id,
-        item_text=item_text,
-        threshold=threshold,
+        item_text=spec.item_text,
+        threshold=spec.threshold,
+        condition=spec.condition,
+        discount_percent=spec.discount_percent,
     )
-    await message.answer(f"Price alert сохранён: {alert.id} — {item_text} <= {threshold} ₽")
+    await message.answer(
+        f"Price alert сохранён: {alert.id} — {format_price_alert_condition(alert)}"
+    )
 
 
 @router.message(Command("price_alerts"))
@@ -172,6 +186,13 @@ async def pantry_plan_handler(message: Message) -> None:
     await message.answer("\n".join(lines))
 
 
+@router.message(Command("pantry_deals"))
+async def pantry_deals_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    await message.answer(await _pantry_deals_report(message))
+
+
 @router.message(Command("receipt"))
 async def receipt_handler(message: Message) -> None:
     if message.from_user is None:
@@ -224,6 +245,27 @@ async def budget_set_handler(message: Message) -> None:
         await message.answer(str(exc))
         return
     await message.answer(f"Бюджет {args[0]}: {amount} ₽")
+
+
+@router.message(Command("budget_plan"))
+async def budget_plan_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    month = (message.text or "").partition(" ")[2].strip() or current_month()
+    async with SessionLocal() as session:
+        user = await get_or_create_user(session, message.from_user)
+        basket = await get_latest_basket_for_user(session, user.id)
+        await session.commit()
+    if basket is None:
+        await message.answer("Последней корзины пока нет. Сначала отправь список покупок.")
+        return
+    planned_items = parse_basket(basket.raw_text)
+    report = SpendingStore(get_settings().obsidian_vault_path).plan_vs_actual(
+        user_id=message.from_user.id,
+        planned_items=planned_items,
+        month=month,
+    )
+    await message.answer(format_plan_vs_actual(report))
 
 
 @router.message(Command("morning"))
@@ -408,14 +450,73 @@ async def _price_alert_report(message: Message) -> str:
         user = await get_or_create_user(session, message.from_user)
         user_settings = await get_settings_for_user(session, user.id)
         snapshots = await get_latest_prices_by_store_products(session)
+        history = await get_price_history_stats(
+            session,
+            store_product_ids=[snapshot.store_product_id for snapshot in snapshots],
+        )
         await session.commit()
+    offers = [
+        offer_from_snapshot_with_history(snapshot, history.get(snapshot.store_product_id))
+        for snapshot in snapshots
+    ]
     hits = evaluate_price_alerts(
         alerts,
         settings=user_settings,
-        offers=[offer_from_snapshot(snapshot) for snapshot in snapshots],
+        offers=offers,
         freshness_hours=settings.price_freshness_hours,
     )
     return format_price_alert_hits(hits)
+
+
+async def _pantry_deals_report(message: Message) -> str:
+    if message.from_user is None:
+        return ""
+    settings = get_settings()
+    pantry_store = PantryStore(settings.obsidian_vault_path)
+    suggestions = pantry_store.shopping_suggestions(user_id=message.from_user.id)
+    if not suggestions:
+        return format_pantry_price_suggestions(suggestions, result=_empty_price_result())
+    items = parse_basket("\n".join(suggestions))
+    async with SessionLocal() as session:
+        user = await get_or_create_user(session, message.from_user)
+        user_settings = await get_settings_for_user(session, user.id)
+        store_slugs = (
+            list(getattr(user_settings, "enabled_store_slugs", []) or []) or list_scrapers()
+        )
+        await session.commit()
+
+    await refresh_prices_for_items(items, store_slugs)
+
+    async with SessionLocal() as session:
+        snapshots = await get_latest_prices_by_store_products(session)
+        history = await get_price_history_stats(
+            session,
+            store_product_ids=[snapshot.store_product_id for snapshot in snapshots],
+        )
+    offers = [
+        offer_from_snapshot_with_history(snapshot, history.get(snapshot.store_product_id))
+        for snapshot in snapshots
+    ]
+    result = compare_prices(
+        items,
+        user_settings,
+        offers,
+        freshness_hours=settings.price_freshness_hours,
+    )
+    return format_pantry_price_suggestions(suggestions, result)
+
+
+def _empty_price_result() -> PriceComparisonResult:
+    return PriceComparisonResult(
+        per_item_best=[],
+        one_store_basket=[],
+        split_basket=SplitBasket(
+            picks=[],
+            total_price=Decimal("0"),
+            number_of_stores=0,
+            estimated_savings_vs_best_single_store=None,
+        ),
+    )
 
 
 async def _morning_report(message: Message) -> str:
@@ -444,5 +545,6 @@ async def _morning_report(message: Message) -> str:
             price_alerts=await _price_alert_report(message),
             pantry=pantry,
             budget=budget,
+            notes=memory.lifestyle_focus_notes(user_id=user_id),
         )
     )[:3900]

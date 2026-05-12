@@ -11,8 +11,9 @@ from app.db.repositories.stores import create_scrape_run, finish_scrape_run, get
 from app.logging_config import get_logger
 from app.scrapers.registry import get_scraper
 from app.scrapers.types import ScrapedProduct
+from app.scripts.scrape_once import classify_scrape_run_result
 from app.services.basket_parser import BasketItemParsed
-from app.services.product_normalizer import build_normalized_key
+from app.services.product_normalizer import build_normalized_key, calculate_unit_price
 
 logger = get_logger(__name__)
 
@@ -23,6 +24,17 @@ class StoreRefreshResult:
     products_found: int
     prices_saved: int
     error_message: str | None = None
+    status: ScrapeRunStatus = ScrapeRunStatus.success
+
+    @property
+    def failed(self) -> bool:
+        return self.status == ScrapeRunStatus.failed or (
+            self.status == ScrapeRunStatus.success and self.error_message is not None
+        )
+
+    @property
+    def degraded(self) -> bool:
+        return self.failed or self.status == ScrapeRunStatus.partial
 
 
 @dataclass(frozen=True)
@@ -31,7 +43,11 @@ class LivePriceRefreshResult:
 
     @property
     def failed_store_slugs(self) -> list[str]:
-        return [store.store_slug for store in self.stores if store.error_message]
+        return [store.store_slug for store in self.stores if store.failed]
+
+    @property
+    def degraded_store_slugs(self) -> list[str]:
+        return [store.store_slug for store in self.stores if store.degraded]
 
 
 def build_live_price_queries(items: list[BasketItemParsed]) -> list[str]:
@@ -79,6 +95,7 @@ async def refresh_store_prices_for_queries(
                 products_found=0,
                 prices_saved=0,
                 error_message="store is not seeded",
+                status=ScrapeRunStatus.failed,
             )
 
         run = await create_scrape_run(session, store.id)
@@ -95,6 +112,14 @@ async def refresh_store_prices_for_queries(
             )
             products_found = len(products)
             for product in products:
+                unit_price = product.unit_price
+                unit_price_unit = product.unit_price_unit
+                if unit_price is None:
+                    unit_price, unit_price_unit = calculate_unit_price(
+                        product.final_price,
+                        product.quantity_value,
+                        product.quantity_unit,
+                    )
                 store_product = await upsert_store_product(
                     session,
                     store_id=store.id,
@@ -116,8 +141,8 @@ async def refresh_store_prices_for_queries(
                     card_price=product.card_price,
                     final_price=product.final_price,
                     price_type=product.price_type,
-                    unit_price=product.unit_price,
-                    unit_price_unit=product.unit_price_unit,
+                    unit_price=unit_price,
+                    unit_price_unit=unit_price_unit,
                     in_stock=product.in_stock,
                     source=PriceSource.html,
                     scraped_at=datetime.now(UTC),
@@ -131,6 +156,16 @@ async def refresh_store_prices_for_queries(
                 store_slug=store_slug,
                 error=error_message,
             )
+        if status != ScrapeRunStatus.failed:
+            status, error_message = classify_scrape_run_result(products_found, prices_saved)
+            if status == ScrapeRunStatus.partial:
+                logger.warning(
+                    "live_price_refresh_partial",
+                    store_slug=store_slug,
+                    products=products_found,
+                    prices=prices_saved,
+                    reason=error_message,
+                )
 
         await finish_scrape_run(
             session,
@@ -146,6 +181,7 @@ async def refresh_store_prices_for_queries(
             products_found=products_found,
             prices_saved=prices_saved,
             error_message=error_message,
+            status=status,
         )
 
 

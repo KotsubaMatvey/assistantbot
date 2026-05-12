@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import Select, desc, func, select
@@ -9,6 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models import PriceSnapshot, PriceSource, PriceType, StoreProduct
+
+
+@dataclass(frozen=True)
+class PriceHistoryStats:
+    store_product_id: int
+    samples_count: int
+    average_price: Decimal
+    min_price: Decimal
+    max_price: Decimal
 
 
 async def add_price_snapshot(
@@ -68,3 +78,36 @@ async def get_latest_prices_by_store_products(
     )
     return list(result.scalars())
 
+
+async def get_price_history_stats(
+    session: AsyncSession,
+    *,
+    store_product_ids: Sequence[int] | None = None,
+    days: int = 30,
+) -> dict[int, PriceHistoryStats]:
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    stmt = (
+        select(
+            PriceSnapshot.store_product_id,
+            func.count(PriceSnapshot.id),
+            func.avg(PriceSnapshot.final_price),
+            func.min(PriceSnapshot.final_price),
+            func.max(PriceSnapshot.final_price),
+        )
+        .where(PriceSnapshot.scraped_at >= cutoff)
+        .group_by(PriceSnapshot.store_product_id)
+    )
+    if store_product_ids is not None:
+        stmt = stmt.where(PriceSnapshot.store_product_id.in_(store_product_ids))
+    rows = await session.execute(stmt)
+    return {
+        store_product_id: PriceHistoryStats(
+            store_product_id=store_product_id,
+            samples_count=int(samples_count),
+            average_price=Decimal(str(average_price)),
+            min_price=Decimal(str(min_price)),
+            max_price=Decimal(str(max_price)),
+        )
+        for store_product_id, samples_count, average_price, min_price, max_price in rows
+        if average_price is not None and min_price is not None and max_price is not None
+    }

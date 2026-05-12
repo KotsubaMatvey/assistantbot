@@ -42,7 +42,13 @@ async def admin_refresh_prices(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
     await message.answer("Запускаю обновление цен.")
-    await refresh_all_prices()
+    result = await refresh_all_prices()
+    if result.degraded_store_slugs:
+        await message.answer(
+            "Обновление цен завершено с деградацией: "
+            + ", ".join(result.degraded_store_slugs)
+        )
+        return
     await message.answer("Обновление цен завершено.")
 
 
@@ -54,8 +60,12 @@ async def admin_scrape_store(message: Message) -> None:
     if not store_slug:
         await message.answer("Использование: /admin_scrape_store <store_slug>")
         return
-    products, prices = await scrape_store(store_slug)
-    await message.answer(f"{store_slug}: товаров {products}, цен {prices}")
+    result = await scrape_store(store_slug)
+    suffix = f", причина: {result.error_message}" if result.error_message else ""
+    await message.answer(
+        f"{store_slug}: {result.status.value}, товаров {result.products_found}, "
+        f"цен {result.prices_found}{suffix}"
+    )
 
 
 @router.message(Command("admin_status"))

@@ -100,6 +100,29 @@ class PriceMemoryContext:
 
 
 @dataclass(frozen=True)
+class LifestyleMemoryContext:
+    preferences: list[MemorySearchResult] = field(default_factory=list)
+    decisions: list[MemorySearchResult] = field(default_factory=list)
+    shopping_notes: list[MemorySearchResult] = field(default_factory=list)
+    frequent_items: list[str] = field(default_factory=list)
+    open_tasks: list[MemoryTask] = field(default_factory=list)
+    pins: list[MemorySearchResult] = field(default_factory=list)
+
+    @property
+    def is_empty(self) -> bool:
+        return not any(
+            (
+                self.preferences,
+                self.decisions,
+                self.shopping_notes,
+                self.frequent_items,
+                self.open_tasks,
+                self.pins,
+            )
+        )
+
+
+@dataclass(frozen=True)
 class MemoryTask:
     id: str
     path: Path
@@ -518,6 +541,23 @@ class ObsidianMemory:
             created_at=created_at,
             note_type="task",
             extra_tags=["task"],
+            space=space,
+        )
+
+    def remember_preference(
+        self,
+        *,
+        user_id: int,
+        text: str,
+        created_at: datetime | None = None,
+        space: str | None = None,
+    ) -> Path:
+        return self.remember_user_note(
+            user_id=user_id,
+            text=text,
+            created_at=created_at,
+            note_type="preference",
+            extra_tags=["preference", *_lifestyle_tags(text)],
             space=space,
         )
 
@@ -1021,6 +1061,92 @@ class ObsidianMemory:
             lines.append(f"Связанная заметка: {context.related_notes[0].snippet}")
         return "\n".join(["Память:"] + lines) if lines else ""
 
+    def build_lifestyle_context(
+        self,
+        *,
+        user_id: int,
+        limit: int = 5,
+    ) -> LifestyleMemoryContext:
+        return LifestyleMemoryContext(
+            preferences=self.collection_notes(
+                user_id=user_id,
+                collection="preference",
+                limit=limit,
+            ),
+            decisions=self.collection_notes(
+                user_id=user_id,
+                collection="decision",
+                limit=limit,
+            ),
+            shopping_notes=self.collection_notes(
+                user_id=user_id,
+                collection="shopping",
+                limit=limit,
+            ),
+            frequent_items=self.frequent_basket_items(user_id=user_id, limit=limit),
+            open_tasks=self.list_open_tasks(user_id=user_id, limit=limit),
+            pins=self.list_pins(user_id=user_id, limit=limit),
+        )
+
+    def lifestyle_focus_notes(
+        self,
+        *,
+        user_id: int,
+        limit: int = 5,
+    ) -> list[str]:
+        context = self.build_lifestyle_context(user_id=user_id, limit=limit)
+        notes: list[str] = []
+        if context.pins:
+            notes.append(f"Важное: {context.pins[0].snippet}")
+        if context.preferences:
+            notes.append(f"Предпочтение: {context.preferences[0].snippet}")
+        if context.decisions:
+            notes.append(f"Последнее решение: {context.decisions[0].snippet}")
+        if context.frequent_items:
+            notes.append("Частые покупки: " + ", ".join(context.frequent_items[:5]))
+        if context.open_tasks:
+            notes.append(f"Открытая задача: {context.open_tasks[0].snippet}")
+        return notes[:limit]
+
+    def format_lifestyle_context(
+        self,
+        *,
+        user_id: int,
+        limit: int = 5,
+    ) -> str:
+        context = self.build_lifestyle_context(user_id=user_id, limit=limit)
+        if context.is_empty:
+            return "Lifestyle context пока пуст. Добавь предпочтения через /preference."
+        lines = ["Lifestyle context"]
+        if context.preferences:
+            lines.append("")
+            lines.append("Предпочтения:")
+            lines.extend(f"- {note.snippet}" for note in context.preferences[:limit])
+        if context.decisions:
+            lines.append("")
+            lines.append("Решения:")
+            lines.extend(f"- {note.snippet}" for note in context.decisions[:limit])
+        if context.frequent_items:
+            lines.append("")
+            lines.append("Частые покупки: " + ", ".join(context.frequent_items[:limit]))
+        if context.open_tasks:
+            lines.append("")
+            lines.append("Открытые задачи:")
+            lines.extend(f"- {task.snippet}" for task in context.open_tasks[:limit])
+        if context.pins:
+            lines.append("")
+            lines.append("Важное:")
+            lines.extend(f"- {pin.snippet}" for pin in context.pins[:limit])
+        if context.shopping_notes:
+            lines.append("")
+            lines.append("Покупки и быт:")
+            lines.extend(f"- {note.snippet}" for note in context.shopping_notes[:limit])
+        return "\n".join(lines)[:3900]
+
+    def frequent_basket_items(self, *, user_id: int, limit: int = 5) -> list[str]:
+        counts = self._basket_item_counts(user_id)
+        return [item for item, _ in counts.most_common(limit)]
+
     def _append_daily_entry(
         self,
         user_id: int,
@@ -1079,12 +1205,7 @@ class ObsidianMemory:
         *,
         min_count: int = 2,
     ) -> list[str]:
-        counts: Counter[str] = Counter()
-        for path in self._user_baskets_dir(user_id).glob("*.md"):
-            body = _strip_frontmatter(path.read_text(encoding="utf-8", errors="ignore"))
-            for line in body.splitlines():
-                if line.startswith("- "):
-                    counts[line[2:].strip().lower()] += 1
+        counts = self._basket_item_counts(user_id)
         frequent: list[str] = []
         for item_name in item_names:
             for saved, count in counts.items():
@@ -1092,6 +1213,15 @@ class ObsidianMemory:
                     frequent.append(item_name)
                     break
         return list(dict.fromkeys(frequent))[:5]
+
+    def _basket_item_counts(self, user_id: int) -> Counter[str]:
+        counts: Counter[str] = Counter()
+        for path in self._user_baskets_dir(user_id).glob("*.md"):
+            body = _strip_frontmatter(path.read_text(encoding="utf-8", errors="ignore"))
+            for line in body.splitlines():
+                if line.startswith("- "):
+                    counts[_basket_item_name(line[2:].strip())] += 1
+        return counts
 
     def _iter_user_markdown(self, user_id: int) -> list[tuple[Path, str]]:
         directory = self._user_dir(user_id)
@@ -1316,6 +1446,34 @@ def _stores_matching_in_notes(texts: list[str], markers: tuple[str, ...]) -> lis
     for text in texts:
         matched.extend(_stores_matching(text, markers))
     return list(dict.fromkeys(matched))
+
+
+def _lifestyle_tags(text: str) -> list[str]:
+    normalized = _normalize_text(text)
+    tags: list[str] = []
+    if _contains_any(normalized, SHOPPING_MARKERS):
+        tags.append("shopping")
+    if any(word in normalized for word in ("бюджет", "траты", "расход", "чек")):
+        tags.append("budget")
+    if any(word in normalized for word in ("склад", "pantry", "дома", "законч")):
+        tags.append("pantry")
+    for slug, aliases in STORE_ALIASES.items():
+        if _contains_any(normalized, aliases):
+            tags.append(slug)
+    return list(dict.fromkeys(tags))
+
+
+def _basket_item_name(text: str) -> str:
+    clean = _normalize_text(text)
+    clean = re.sub(r"^\d+(?:[.,]\d+)?x\s+", "", clean)
+    clean = re.sub(r"\s+x\d+(?:[.,]\d+)?$", "", clean)
+    clean = re.sub(r"\b\d+(?:[.,]\d+)?\s*(кг|г|гр|л|мл|шт|%)?\b", " ", clean)
+    tokens = [
+        token
+        for token in clean.split()
+        if token not in {"c0", "c1", "с0", "с1", "уп", "пачка"}
+    ]
+    return " ".join(tokens).strip() or clean.strip()
 
 
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="dark" />
     <title>Assistant Bot Mini App</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -15,17 +15,49 @@
           <p class="eyebrow">Assistant Bot</p>
           <h1>Пульт дня</h1>
         </div>
-        <button class="icon-button" data-action="send" data-payload="status">
+        <button class="icon-button" data-action="send" data-payload="status" data-state="working">
           <span aria-hidden="true">↻</span>
           <span class="sr-only">Обновить статус</span>
         </button>
       </header>
 
+      <section class="assistant-strip" aria-label="Pixel assistant">
+        <div class="pixel-stage">
+          <div class="pixel-avatar is-shopping" data-pixel-avatar aria-hidden="true">
+            <span class="pixel-hair"></span>
+            <span class="pixel-head"></span>
+            <span class="pixel-ear pixel-ear-left"></span>
+            <span class="pixel-ear pixel-ear-right"></span>
+            <span class="pixel-eye pixel-eye-left"></span>
+            <span class="pixel-eye pixel-eye-right"></span>
+            <span class="pixel-beard"></span>
+            <span class="pixel-smirk"></span>
+            <span class="pixel-neck"></span>
+            <span class="pixel-body"></span>
+            <span class="pixel-arm pixel-arm-left"></span>
+            <span class="pixel-arm pixel-arm-right"></span>
+            <span class="pixel-band"></span>
+            <span class="pixel-leg pixel-leg-left"></span>
+            <span class="pixel-leg pixel-leg-right"></span>
+            <span class="pixel-shoe pixel-shoe-left"></span>
+            <span class="pixel-shoe pixel-shoe-right"></span>
+            <span class="pixel-prop"></span>
+          </div>
+        </div>
+        <div class="assistant-copy">
+          <p class="eyebrow" data-state-kicker>Shopping mode</p>
+          <h2 data-state-title>Сравниваю корзину</h2>
+          <p data-state-copy>
+            Проверяю свежесть цен, pantry и alerts перед покупкой.
+          </p>
+        </div>
+      </section>
+
       <nav class="tabs" aria-label="Разделы">
-        <button class="tab is-active" data-tab="shopping">Покупки</button>
-        <button class="tab" data-tab="markets">Рынки</button>
-        <button class="tab" data-tab="assistant">Ассистент</button>
-        <button class="tab" data-tab="memory">Память</button>
+        <button class="tab is-active" data-tab="shopping" data-state="shopping">Покупки</button>
+        <button class="tab" data-tab="markets" data-state="alert">Рынки</button>
+        <button class="tab" data-tab="assistant" data-state="idle">Ассистент</button>
+        <button class="tab" data-tab="memory" data-state="thinking">Память</button>
       </nav>
 
       <section class="panel is-active" id="shopping" aria-label="Покупки">
@@ -33,6 +65,10 @@
           <article>
             <span>Корзина</span>
             <strong>5 товаров</strong>
+          </article>
+          <article>
+            <span>Лучший маршрут</span>
+            <strong>2 магазина</strong>
           </article>
           <article>
             <span>Экономия</span>
@@ -49,30 +85,63 @@
           <textarea id="basket" rows="5">2x молоко 2.5 1 л
 яйца C1 10 шт
 сахар 1 кг</textarea>
-          <button class="primary" data-action="basket">Сравнить цены</button>
+          <div class="composer-actions">
+            <button class="primary" data-action="basket" data-state="working">Сравнить</button>
+            <button data-action="send" data-payload="pantry_deals" data-state="shopping">
+              Докупки
+            </button>
+          </div>
         </div>
 
         <div class="list">
           <article class="price-row">
             <div>
               <strong>Молоко 2.5 1 л × 2</strong>
-              <span>Лучше: Магнит, по акции</span>
+              <span>Лучше: Магнит, акция, 109 ₽/л, совпадение 96%</span>
             </div>
             <b>180 ₽</b>
           </article>
           <article class="price-row">
             <div>
               <strong>Яйца C1 10 шт</strong>
-              <span>Лучше: Smart, обычная цена</span>
+              <span>Лучше: Smart, обычная цена, около средней</span>
             </div>
             <b>104 ₽</b>
           </article>
         </div>
 
+        <div class="pantry-grid">
+          <article>
+            <span>Pantry</span>
+            <strong>Молоко заканчивается</strong>
+            <p>Проверить склад и список докупок.</p>
+            <button data-action="send" data-payload="pantry_plan" data-state="thinking">
+              План
+            </button>
+          </article>
+          <article>
+            <span>Alerts</span>
+            <strong>3 сигнала</strong>
+            <p>Проверить цены ниже порога и ниже средней.</p>
+            <button data-action="send" data-payload="check_alerts" data-state="alert">
+              Проверить
+            </button>
+          </article>
+        </div>
+
         <div class="action-row">
-          <button data-action="send" data-payload="price_alerts">Price alerts</button>
-          <button data-action="send" data-payload="pantry">Pantry</button>
-          <button data-action="send" data-payload="budget">Budget</button>
+          <button data-action="send" data-payload="price_alerts" data-state="alert">
+            Price alerts
+          </button>
+          <button data-action="send" data-payload="pantry" data-state="shopping">
+            Pantry
+          </button>
+          <button data-action="send" data-payload="budget" data-state="working">
+            Budget
+          </button>
+          <button data-action="send" data-payload="budget_plan" data-state="working">
+            Plan vs fact
+          </button>
         </div>
       </section>
 
@@ -88,33 +157,42 @@
           <article><span>Nasdaq</span><strong>16,340</strong></article>
           <article><span>Dow Jones</span><strong>39,120</strong></article>
         </div>
-        <button class="primary" data-action="send" data-payload="markets">
-          Запросить свежие рынки
+        <button class="primary" data-action="send" data-payload="markets" data-state="alert">
+          Свежие рынки
         </button>
       </section>
 
       <section class="panel" id="assistant" aria-label="Ассистент">
-        <div class="assistant-card">
-          <span class="pixel-claw" aria-hidden="true"></span>
-          <div>
-            <h2>Pixel Assistant</h2>
-            <p>Локальный помощник для быстрых маршрутов: покупки, рынки, задачи и бюджет.</p>
-          </div>
-        </div>
         <div class="pixel-console">
           <label for="pixelPrompt">Команда помощнику</label>
           <div>
             <input id="pixelPrompt" value="что важно утром?" />
-            <button data-action="assistant">Send</button>
+            <button data-action="assistant" data-state="thinking">Send</button>
           </div>
         </div>
+
+        <div class="state-grid">
+          <button data-assistant-state="idle">Idle</button>
+          <button data-assistant-state="thinking">Thinking</button>
+          <button data-assistant-state="happy">Success</button>
+          <button data-assistant-state="alert">Alert</button>
+          <button data-assistant-state="shopping">Shopping</button>
+          <button data-assistant-state="sad">Low battery</button>
+          <button data-assistant-state="working">Working</button>
+        </div>
+
         <div class="command-grid">
-          <button data-action="send" data-payload="status">Status</button>
-          <button data-action="send" data-payload="compact">Compact</button>
-          <button data-action="send" data-payload="new">New</button>
-          <button data-action="send" data-payload="agenda">Agenda</button>
-          <button data-action="send" data-payload="morning">Morning</button>
-          <button data-action="send" data-payload="assistants">Assistants</button>
+          <button data-action="send" data-payload="status" data-state="working">Status</button>
+          <button data-action="send" data-payload="compact" data-state="working">Compact</button>
+          <button data-action="send" data-payload="new" data-state="idle">New</button>
+          <button data-action="send" data-payload="agenda" data-state="thinking">Agenda</button>
+          <button data-action="send" data-payload="lifestyle_context" data-state="thinking">
+            Context
+          </button>
+          <button data-action="send" data-payload="morning" data-state="working">Morning</button>
+          <button data-action="send" data-payload="assistants" data-state="happy">
+            Assistants
+          </button>
         </div>
       </section>
 
@@ -133,7 +211,9 @@
             <p>Сводка сессии добавлена в локальную память.</p>
           </article>
         </div>
-        <button class="primary" data-action="send" data-payload="agenda">Открыть agenda</button>
+        <button class="primary" data-action="send" data-payload="agenda" data-state="thinking">
+          Открыть agenda
+        </button>
       </section>
     </main>
 

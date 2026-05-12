@@ -54,7 +54,28 @@ class StorePriceHealth:
         )
 
     @property
+    def last_scrape_failed(self) -> bool:
+        return self.last_scrape_status == "failed"
+
+    @property
+    def last_scrape_partial(self) -> bool:
+        return self.last_scrape_status == "partial"
+
+    @property
+    def is_degraded(self) -> bool:
+        return (
+            self.last_scrape_failed
+            or self.last_scrape_partial
+            or not self.has_prices
+            or self.is_stale
+        )
+
+    @property
     def status_label(self) -> str:
+        if self.last_scrape_failed:
+            return "ошибка scraping"
+        if self.last_scrape_partial:
+            return "частично"
         if not self.has_prices:
             return "нет цен"
         if self.is_stale:
@@ -69,7 +90,14 @@ class CatalogHealth:
 
     @property
     def fresh_store_count(self) -> int:
-        return sum(1 for store in self.stores if store.has_prices and not store.is_stale)
+        return sum(
+            1
+            for store in self.stores
+            if store.has_prices
+            and not store.is_stale
+            and not store.last_scrape_failed
+            and not store.last_scrape_partial
+        )
 
     @property
     def stale_store_count(self) -> int:
@@ -78,6 +106,18 @@ class CatalogHealth:
     @property
     def empty_store_count(self) -> int:
         return sum(1 for store in self.stores if not store.has_prices)
+
+    @property
+    def failed_store_count(self) -> int:
+        return sum(1 for store in self.stores if store.last_scrape_failed)
+
+    @property
+    def partial_store_count(self) -> int:
+        return sum(1 for store in self.stores if store.last_scrape_partial)
+
+    @property
+    def degraded_store_count(self) -> int:
+        return sum(1 for store in self.stores if store.is_degraded)
 
 
 async def get_catalog_health(session: AsyncSession, *, freshness_hours: int) -> CatalogHealth:
@@ -144,6 +184,10 @@ def format_catalog_health(health: CatalogHealth) -> str:
             f"Магазины: свежие {health.fresh_store_count}, "
             f"устаревшие {health.stale_store_count}, без цен {health.empty_store_count}"
         ),
+        (
+            f"Scraper: degraded {health.degraded_store_count}, "
+            f"partial {health.partial_store_count}, failed {health.failed_store_count}"
+        ),
         "",
     ]
     for store in health.stores:
@@ -159,4 +203,6 @@ def format_catalog_health(health: CatalogHealth) -> str:
         )
         if store.last_scrape_error:
             lines.append(f"  ошибка: {store.last_scrape_error[:200]}")
+        if store.last_scrape_failed or store.last_scrape_partial:
+            lines.append(f"  диагностика: /admin_scraper_diag {store.slug} молоко")
     return "\n".join(lines)

@@ -6,21 +6,30 @@ from aiogram.types import Message
 from app.bot.handlers.lifestyle import (
     assistants_handler,
     budget_handler,
+    budget_plan_handler,
+    check_alerts_handler,
     morning_handler,
+    pantry_deals_handler,
     pantry_handler,
+    pantry_plan_handler,
     price_alerts_handler,
 )
 from app.bot.handlers.markets import markets_command
 from app.bot.handlers.memory import (
     agenda_handler,
     compact_handler,
+    lifestyle_context_handler,
     new_session_handler,
     status_handler,
 )
 from app.bot.handlers.shopping import _handle_basket
+from app.config import get_settings
+from app.logging_config import get_logger
+from app.services.audit_log import AuditLogStore
 from app.services.mini_app import parse_mini_app_payload
 
 router = Router()
+logger = get_logger(__name__)
 
 
 @router.message(F.web_app_data)
@@ -29,22 +38,36 @@ async def mini_app_data_handler(message: Message) -> None:
     try:
         payload = parse_mini_app_payload(raw_data)
     except ValueError as exc:
+        _audit_mini_app(message, "mini_app_rejected", str(exc))
         await message.answer(f"Mini App payload не обработан: {exc}")
         return
 
     if payload.type == "basket_compare":
+        _audit_mini_app(
+            message,
+            "mini_app_basket_compare",
+            f"chars={len(payload.text)} lines={len(payload.text.splitlines())}",
+        )
         await _handle_basket(message, payload.text)
         return
     if payload.type == "assistant_message":
+        _audit_mini_app(
+            message,
+            "mini_app_assistant_message",
+            f"chars={len(payload.text)}",
+        )
         await message.answer(_pixel_assistant_reply(payload.text))
         return
 
+    _audit_mini_app(message, "mini_app_command", payload.command)
     if payload.command == "markets":
         await markets_command(message)
     elif payload.command == "status":
         await status_handler(message)
     elif payload.command == "agenda":
         await agenda_handler(message)
+    elif payload.command == "lifestyle_context":
+        await lifestyle_context_handler(message)
     elif payload.command == "compact":
         await compact_handler(message)
     elif payload.command == "new":
@@ -53,12 +76,32 @@ async def mini_app_data_handler(message: Message) -> None:
         await morning_handler(message)
     elif payload.command == "price_alerts":
         await price_alerts_handler(message)
+    elif payload.command == "check_alerts":
+        await check_alerts_handler(message)
     elif payload.command == "pantry":
         await pantry_handler(message)
+    elif payload.command == "pantry_plan":
+        await pantry_plan_handler(message)
+    elif payload.command == "pantry_deals":
+        await pantry_deals_handler(message)
     elif payload.command == "budget":
         await budget_handler(message)
+    elif payload.command == "budget_plan":
+        await budget_plan_handler(message)
     elif payload.command == "assistants":
         await assistants_handler(message)
+
+
+def _audit_mini_app(message: Message, action: str, detail: str) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    try:
+        AuditLogStore(get_settings().obsidian_vault_path).record(
+            user_id=user_id,
+            action=action,
+            detail=detail,
+        )
+    except Exception as exc:
+        logger.warning("mini_app_audit_failed", action=action, error=str(exc))
 
 
 def _pixel_assistant_reply(text: str) -> str:
@@ -69,4 +112,9 @@ def _pixel_assistant_reply(text: str) -> str:
         return "Pixel helper: для рынка используй /markets или /morning."
     if "зада" in normalized or "план" in normalized:
         return "Pixel helper: для задач используй /agenda, /task и /compact."
-    return "Pixel helper: могу открыть /morning, /agenda, /markets, /pantry или /budget."
+    if "пам" in normalized or "контекст" in normalized:
+        return "Pixel helper: для контекста используй /lifestyle_context или /memory."
+    return (
+        "Pixel helper: могу открыть /morning, /agenda, /markets, "
+        "/pantry, /budget или /lifestyle_context."
+    )

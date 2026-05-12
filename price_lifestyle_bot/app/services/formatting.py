@@ -31,12 +31,22 @@ def _offer_line(offer: ComparedOffer, *, count: Decimal = Decimal("1")) -> str:
     store = offer.offer.store_product.store.display_name
     stale = ", данные могут быть устаревшими" if offer.is_stale else ""
     unit = ""
-    if offer.offer.unit_price is not None and offer.offer.unit_price_unit:
-        unit = f", {money(offer.offer.unit_price)} {offer.offer.unit_price_unit}"
+    if offer.effective_unit_price is not None and offer.effective_unit_price_unit:
+        unit = f", {money(offer.effective_unit_price)} {offer.effective_unit_price_unit}"
     subtotal = ""
     if count != Decimal("1"):
         subtotal = f", за {compact_decimal(count)} шт: {money(offer.effective_price * count)}"
-    return f"{store} — {money(offer.effective_price)} ({offer.price_label}{unit}{subtotal}{stale})"
+    confidence = min(100, max(0, offer.match.score))
+    match = f", совпадение {confidence}%/{offer.match.match_type}"
+    trend = ""
+    if offer.price_trend_label != "истории мало":
+        trend = f", {offer.price_trend_label}"
+        if offer.price_delta_percent is not None:
+            trend += f" ({compact_decimal(offer.price_delta_percent)}%)"
+    return (
+        f"{store} — {money(offer.effective_price)} "
+        f"({offer.price_label}{unit}{subtotal}{match}{trend}{stale})"
+    )
 
 
 def _summary_lines(result: PriceComparisonResult) -> list[str]:

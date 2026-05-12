@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from app.db.models import ScrapeRunStatus
 from app.services import live_price_refresh
 from app.services.basket_parser import parse_basket
 from app.services.live_price_refresh import StoreRefreshResult
@@ -40,8 +41,22 @@ def test_failed_store_slugs_returns_only_failed_refreshes() -> None:
     result = live_price_refresh.LivePriceRefreshResult(
         stores=[
             StoreRefreshResult("smart", products_found=1, prices_saved=1),
-            StoreRefreshResult("magnit", products_found=0, prices_saved=0, error_message="timeout"),
+            StoreRefreshResult(
+                "spar",
+                products_found=0,
+                prices_saved=0,
+                error_message="scraper returned no products",
+                status=ScrapeRunStatus.partial,
+            ),
+            StoreRefreshResult(
+                "magnit",
+                products_found=0,
+                prices_saved=0,
+                error_message="timeout",
+                status=ScrapeRunStatus.failed,
+            ),
         ]
     )
 
     assert result.failed_store_slugs == ["magnit"]
+    assert result.degraded_store_slugs == ["spar", "magnit"]

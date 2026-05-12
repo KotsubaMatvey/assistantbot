@@ -11,6 +11,7 @@ from app.services.assistant_jobs import AssistantJobStore
 from app.services.assistant_runtime import AssistantRuntimeStore, parse_on_off
 from app.services.assistant_skills import AssistantSkillStore
 from app.services.obsidian_memory import ObsidianMemory, parse_space_prefix
+from app.services.scheduler import _job_run_detail
 
 
 def test_spaces_can_be_set_and_used_for_capture(tmp_path) -> None:
@@ -100,6 +101,7 @@ def test_pairing_code_adds_user_to_allowlist(tmp_path) -> None:
         now=datetime(2026, 5, 6, 12, 0, tzinfo=UTC),
     )
 
+    assert len(pairing.code) == 8
     assert access.is_allowed(user_id=456, mode="pairing", admin_ids=[]) is False
     assert access.approve_pairing_code(
         code=pairing.code.lower(),
@@ -173,6 +175,21 @@ def test_job_store_schedules_runs_and_deletes_jobs(tmp_path) -> None:
     assert updated.next_run_at > job.next_run_at
     assert store.list_runs(user_id=123)[0].ok is True
     assert store.delete_job(user_id=123, job_id=job.id) is True
+
+
+def test_job_run_detail_reports_delivery_without_user_text(tmp_path) -> None:
+    store = AssistantJobStore(str(tmp_path), timezone_name="Europe/Moscow")
+    job = store.add_job(
+        user_id=123,
+        schedule_type="daily",
+        schedule_value="09:30",
+        delivery_mode="morning",
+        message="private morning request",
+        now=datetime(2026, 5, 6, 6, 0, tzinfo=UTC),
+    )
+
+    assert _job_run_detail(job, "hello") == "morning; sent=true; chars=5"
+    assert "private" not in _job_run_detail(job, "hello")
 
 
 def test_assistant_contract_exposes_no_llm_capabilities(tmp_path) -> None:

@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from app.services.agenda import build_agenda
 from app.services.assistant_jobs import AssistantJobStore, parse_job_request
 from app.services.assistant_tools import run_tool
 from app.services.audit_log import AuditLogStore
 from app.services.conversation_summary import summarize_conversation
 from app.services.memory_transfer import export_user_memory, import_user_memory
-from app.services.mini_app import mini_app_manifest, parse_mini_app_payload
+from app.services.mini_app import (
+    MAX_ASSISTANT_TEXT_CHARS,
+    MAX_BASKET_TEXT_CHARS,
+    mini_app_manifest,
+    parse_mini_app_payload,
+)
 from app.services.obsidian_memory import ObsidianMemory
 from app.services.secret_scanner import scan_for_secrets
 from app.services.source_trust import build_source_trust
@@ -49,6 +55,15 @@ def test_standing_orders_and_audit_log(tmp_path) -> None:
     assert orders.list_orders(user_id=123)[0].text == "Always extract follow-ups."
     assert audit.list_events()[0].id == event.id
     assert orders.delete_order(user_id=123, order_id=order.id) is True
+
+
+def test_audit_log_skips_corrupted_lines(tmp_path) -> None:
+    audit = AuditLogStore(str(tmp_path))
+    event = audit.record(user_id=123, action="ok", detail="safe")
+    with audit.path.open("a", encoding="utf-8") as file:
+        file.write("{broken json\n")
+
+    assert audit.list_events()[0].id == event.id
 
 
 def test_secret_scanner_redacts_findings(tmp_path) -> None:
@@ -115,6 +130,11 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     summary = summarize_conversation(["надо написать план", "решили выбрать вариант A"])
     manifest = mini_app_manifest("https://example.com/app")
     command_payload = parse_mini_app_payload('{"type":"command","command":"markets"}')
+    pantry_payload = parse_mini_app_payload('{"type":"command","command":"pantry_deals"}')
+    budget_payload = parse_mini_app_payload('{"type":"command","command":"budget_plan"}')
+    context_payload = parse_mini_app_payload(
+        '{"type":"command","command":"lifestyle_context"}'
+    )
     basket_payload = parse_mini_app_payload('{"type":"basket_compare","text":"молоко"}')
     assistant_payload = parse_mini_app_payload('{"type":"assistant_message","text":"btc"}')
 
@@ -124,6 +144,24 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert "tasks" in manifest.features
     assert "market_watch" in manifest.features
     assert "pixel_assistant" in manifest.features
+    assert "lifestyle_context" in manifest.features
     assert command_payload.command == "markets"
+    assert pantry_payload.command == "pantry_deals"
+    assert budget_payload.command == "budget_plan"
+    assert context_payload.command == "lifestyle_context"
     assert basket_payload.text == "молоко"
     assert assistant_payload.text == "btc"
+
+
+def test_mini_app_payload_rejects_oversized_text() -> None:
+    long_basket = "м" * (MAX_BASKET_TEXT_CHARS + 1)
+    long_assistant = "a" * (MAX_ASSISTANT_TEXT_CHARS + 1)
+
+    with pytest.raises(ValueError, match="basket text is too large"):
+        parse_mini_app_payload(
+            '{"type":"basket_compare","text":"' + long_basket + '"}'
+        )
+    with pytest.raises(ValueError, match="assistant message is too large"):
+        parse_mini_app_payload(
+            '{"type":"assistant_message","text":"' + long_assistant + '"}'
+        )

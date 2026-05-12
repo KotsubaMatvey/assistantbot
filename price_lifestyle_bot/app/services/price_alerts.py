@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -12,15 +13,34 @@ from typing import Any
 from app.services.basket_parser import parse_basket
 from app.services.price_comparator import PriceOffer, compare_prices
 
+CONDITION_BELOW_PRICE = "below_price"
+CONDITION_BELOW_AVERAGE = "below_average"
+CONDITION_DISCOUNT_PERCENT = "discount_percent"
+CONDITION_IN_STOCK = "in_stock"
+
 
 @dataclass(frozen=True)
 class PriceAlert:
     id: str
     user_id: int
     item_text: str
-    threshold: Decimal
+    threshold: Decimal | None = None
+    condition: str = CONDITION_BELOW_PRICE
+    discount_percent: Decimal | None = None
     enabled: bool = True
     created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class PriceAlertSpec:
+    item_text: str
+    condition: str
+    threshold: Decimal | None = None
+    discount_percent: Decimal | None = None
+
+    def __iter__(self) -> Iterator[object]:
+        yield self.item_text
+        yield self.threshold
 
 
 @dataclass(frozen=True)
@@ -29,6 +49,7 @@ class PriceAlertHit:
     store_name: str
     price: Decimal
     label: str
+    reason: str
 
 
 class PriceAlertStore:
@@ -40,19 +61,27 @@ class PriceAlertStore:
         *,
         user_id: int,
         item_text: str,
-        threshold: Decimal,
+        threshold: Decimal | None = None,
+        condition: str = CONDITION_BELOW_PRICE,
+        discount_percent: Decimal | None = None,
         now: datetime | None = None,
     ) -> PriceAlert:
         clean_item = item_text.strip()
         if not clean_item:
             raise ValueError("alert item is empty")
-        if threshold <= 0:
+        if condition == CONDITION_BELOW_PRICE and (threshold is None or threshold <= 0):
             raise ValueError("threshold must be positive")
+        if condition == CONDITION_DISCOUNT_PERCENT and (
+            discount_percent is None or discount_percent <= 0
+        ):
+            raise ValueError("discount percent must be positive")
         alert = PriceAlert(
             id=secrets.token_hex(4),
             user_id=user_id,
             item_text=clean_item,
             threshold=threshold,
+            condition=condition,
+            discount_percent=discount_percent,
             created_at=(now or datetime.now(UTC)).astimezone(UTC),
         )
         alerts = self.list_alerts(user_id=user_id)
@@ -95,19 +124,57 @@ class PriceAlertStore:
         return self.vault_path / "users" / str(user_id) / "price-alerts.json"
 
 
-def parse_price_alert_request(text: str) -> tuple[str, Decimal]:
+def parse_price_alert_request(text: str) -> PriceAlertSpec:
     clean = text.strip()
-    match = re.search(r"(?:<=|<)?\s*(?P<threshold>\d+(?:[.,]\d{1,2})?)\s*$", clean)
+    if not clean:
+        raise ValueError("Использование: /watch_price <товар> <условие>")
+
+    discount = re.search(
+        r"(?:скидк[аи]|discount)\s*(?:>=|>|от)?\s*"
+        r"(?P<discount>\d+(?:[.,]\d{1,2})?)\s*%?\s*$",
+        clean,
+        re.IGNORECASE,
+    )
+    if discount is not None:
+        item_text = clean[: discount.start()].strip(" <=->")
+        if not item_text:
+            raise ValueError("Использование: /watch_price <товар> скидка 20%")
+        return PriceAlertSpec(
+            item_text=item_text,
+            condition=CONDITION_DISCOUNT_PERCENT,
+            discount_percent=Decimal(discount.group("discount").replace(",", ".")),
+        )
+
+    lowered = clean.lower()
+    for marker in ("ниже обычного", "дешевле обычного", "ниже средней", "дешевле среднего"):
+        if lowered.endswith(marker):
+            item_text = clean[: -len(marker)].strip(" <=->")
+            if not item_text:
+                raise ValueError("Использование: /watch_price <товар> ниже обычного")
+            return PriceAlertSpec(item_text=item_text, condition=CONDITION_BELOW_AVERAGE)
+
+    for marker in ("в наличии", "появится", "появился", "снова в продаже"):
+        if lowered.endswith(marker):
+            item_text = clean[: -len(marker)].strip(" <=->")
+            if not item_text:
+                raise ValueError("Использование: /watch_price <товар> в наличии")
+            return PriceAlertSpec(item_text=item_text, condition=CONDITION_IN_STOCK)
+
+    match = re.search(
+        r"(?:<=|<|до|ниже)?\s*(?P<threshold>\d+(?:[.,]\d{1,2})?)\s*(?:₽|р|руб\.?)?\s*$",
+        clean,
+        re.IGNORECASE,
+    )
     if match is None:
-        raise ValueError("Использование: /watch_price <товар> <цена>")
+        raise ValueError("Использование: /watch_price <товар> <условие>")
     item_text = clean[: match.start()].strip(" <=")
     if not item_text:
-        raise ValueError("Использование: /watch_price <товар> <цена>")
+        raise ValueError("Использование: /watch_price <товар> <условие>")
     try:
         threshold = Decimal(match.group("threshold").replace(",", "."))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError("invalid threshold") from exc
-    return item_text, threshold
+    return PriceAlertSpec(item_text=item_text, condition=CONDITION_BELOW_PRICE, threshold=threshold)
 
 
 def evaluate_price_alerts(
@@ -131,13 +198,15 @@ def evaluate_price_alerts(
         if not result.per_item_best or not result.per_item_best[0].offers:
             continue
         best = result.per_item_best[0].offers[0]
-        if best.effective_price <= alert.threshold:
+        reason = _alert_reason(alert, best)
+        if reason is not None:
             hits.append(
                 PriceAlertHit(
                     alert=alert,
                     store_name=best.offer.store_product.store.display_name,
                     price=best.effective_price,
                     label=best.price_label,
+                    reason=reason,
                 )
             )
     return hits
@@ -148,7 +217,7 @@ def format_price_alerts(alerts: list[PriceAlert]) -> str:
         return "Price alerts пока нет."
     lines = ["Price alerts:"]
     for alert in alerts:
-        lines.append(f"- {alert.id}: {alert.item_text} <= {_money(alert.threshold)}")
+        lines.append(f"- {alert.id}: {format_price_alert_condition(alert)}")
     return "\n".join(lines)
 
 
@@ -159,12 +228,55 @@ def format_price_alert_hits(hits: list[PriceAlertHit]) -> str:
     for hit in hits:
         lines.append(
             f"- {hit.alert.item_text}: {hit.store_name} — {_money(hit.price)} "
-            f"({hit.label}), порог {_money(hit.alert.threshold)}"
+            f"({hit.label}; {hit.reason})"
         )
     return "\n".join(lines)
 
 
-def _money(value: Decimal) -> str:
+def format_price_alert_condition(alert: PriceAlert) -> str:
+    if alert.condition == CONDITION_BELOW_AVERAGE:
+        return f"{alert.item_text} дешевле обычного"
+    if alert.condition == CONDITION_DISCOUNT_PERCENT:
+        return f"{alert.item_text} скидка от {alert.discount_percent}%"
+    if alert.condition == CONDITION_IN_STOCK:
+        return f"{alert.item_text} в наличии"
+    return f"{alert.item_text} <= {_money(alert.threshold)}"
+
+
+def _alert_reason(alert: PriceAlert, best: Any) -> str | None:
+    if alert.condition == CONDITION_BELOW_AVERAGE:
+        if best.price_delta_percent is not None and best.price_delta_percent <= Decimal("-5"):
+            return f"{best.price_trend_label}, {best.price_delta_percent}% к средней"
+        return None
+    if alert.condition == CONDITION_DISCOUNT_PERCENT:
+        discount = _discount_percent(
+            best.offer.regular_price or best.offer.old_price,
+            best.effective_price,
+        )
+        if discount is not None and alert.discount_percent is not None:
+            if discount >= alert.discount_percent:
+                return f"скидка {discount}%"
+        return None
+    if alert.condition == CONDITION_IN_STOCK:
+        if best.offer.in_stock is not False:
+            return "товар найден в наличии"
+        return None
+    if alert.threshold is not None and best.effective_price <= alert.threshold:
+        return f"порог {_money(alert.threshold)}"
+    return None
+
+
+def _discount_percent(reference_price: Decimal | None, price: Decimal) -> Decimal | None:
+    if reference_price is None or reference_price <= 0 or price >= reference_price:
+        return None
+    return ((reference_price - price) / reference_price * Decimal("100")).quantize(
+        Decimal("0.1")
+    )
+
+
+def _money(value: Decimal | None) -> str:
+    if value is None:
+        return "нет порога"
     return f"{value.quantize(Decimal('0.01'))} ₽"
 
 
@@ -173,7 +285,11 @@ def _alert_to_dict(alert: PriceAlert) -> dict[str, object]:
         "id": alert.id,
         "user_id": alert.user_id,
         "item_text": alert.item_text,
-        "threshold": str(alert.threshold),
+        "threshold": str(alert.threshold) if alert.threshold is not None else None,
+        "condition": alert.condition,
+        "discount_percent": (
+            str(alert.discount_percent) if alert.discount_percent is not None else None
+        ),
         "enabled": alert.enabled,
         "created_at": (alert.created_at or datetime.now(UTC)).isoformat(),
     }
@@ -184,7 +300,17 @@ def _alert_from_dict(raw: dict[str, object]) -> PriceAlert:
         id=str(raw["id"]),
         user_id=int(str(raw["user_id"])),
         item_text=str(raw["item_text"]),
-        threshold=Decimal(str(raw["threshold"])),
+        threshold=(
+            Decimal(str(raw["threshold"]))
+            if raw.get("threshold") is not None
+            else None
+        ),
+        condition=str(raw.get("condition", CONDITION_BELOW_PRICE)),
+        discount_percent=(
+            Decimal(str(raw["discount_percent"]))
+            if raw.get("discount_percent") is not None
+            else None
+        ),
         enabled=bool(raw.get("enabled", True)),
         created_at=datetime.fromisoformat(str(raw["created_at"])).astimezone(UTC),
     )

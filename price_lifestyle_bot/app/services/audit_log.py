@@ -47,7 +47,10 @@ class AuditLogStore:
         for line in self.path.read_text(encoding="utf-8", errors="ignore").splitlines():
             if not line.strip():
                 continue
-            events.append(_event_from_dict(json.loads(line)))
+            try:
+                events.append(_event_from_dict(json.loads(line)))
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
         events.sort(key=lambda event: event.created_at, reverse=True)
         return events[:limit]
 

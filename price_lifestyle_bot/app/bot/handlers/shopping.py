@@ -9,7 +9,7 @@ from aiogram.types import Message
 from app.bot.message_utils import answer_long
 from app.config import get_settings
 from app.db.repositories.baskets import create_basket, get_latest_basket_for_user
-from app.db.repositories.prices import get_latest_prices_by_store_products
+from app.db.repositories.prices import get_latest_prices_by_store_products, get_price_history_stats
 from app.db.repositories.users import get_or_create_user, get_settings_for_user
 from app.db.session import SessionLocal
 from app.scrapers.registry import list_scrapers
@@ -17,7 +17,7 @@ from app.services.basket_parser import parse_basket
 from app.services.formatting import format_price_comparison
 from app.services.live_price_refresh import refresh_prices_for_items
 from app.services.obsidian_memory import ObsidianMemory, PriceMemoryContext
-from app.services.price_comparator import compare_prices, offer_from_snapshot
+from app.services.price_comparator import compare_prices, offer_from_snapshot_with_history
 
 router = Router()
 
@@ -87,8 +87,15 @@ async def _handle_basket(message: Message, text: str) -> None:
 
     async with SessionLocal() as session:
         snapshots = await get_latest_prices_by_store_products(session)
+        history = await get_price_history_stats(
+            session,
+            store_product_ids=[snapshot.store_product_id for snapshot in snapshots],
+        )
 
-    offers = [offer_from_snapshot(snapshot) for snapshot in snapshots]
+    offers = [
+        offer_from_snapshot_with_history(snapshot, history.get(snapshot.store_product_id))
+        for snapshot in snapshots
+    ]
     result = compare_prices(
         items,
         effective_settings,

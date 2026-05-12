@@ -63,7 +63,7 @@ class AccessControlStore:
         )
         if existing is not None:
             return existing
-        code = secrets.token_hex(2).upper()
+        code = secrets.token_hex(4).upper()
         pairings = self.list_pairing_codes(now=current)
         pairing = PairingCode(
             code=code,

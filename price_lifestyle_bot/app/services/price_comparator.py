@@ -9,6 +9,7 @@ from app.db.models import PriceType
 from app.services.basket_parser import BasketItemParsed
 from app.services.loyalty import user_has_store_card
 from app.services.product_matcher import MatchableProduct, MatchResult, match_products
+from app.services.product_normalizer import calculate_unit_price
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,10 @@ class PriceOffer:
     unit_price_unit: str | None
     in_stock: bool | None
     scraped_at: datetime
+    history_average_price: Decimal | None = None
+    history_min_price: Decimal | None = None
+    history_max_price: Decimal | None = None
+    history_samples_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,10 @@ class ComparedOffer:
     price_label: str
     used_card: bool
     is_stale: bool
+    effective_unit_price: Decimal | None
+    effective_unit_price_unit: str | None
+    price_trend_label: str
+    price_delta_percent: Decimal | None
 
 
 @dataclass(frozen=True)
@@ -91,6 +100,13 @@ class PriceComparisonResult:
 
 
 def offer_from_snapshot(snapshot: Any) -> PriceOffer:
+    return offer_from_snapshot_with_history(snapshot, history_stats=None)
+
+
+def offer_from_snapshot_with_history(
+    snapshot: Any,
+    history_stats: Any | None = None,
+) -> PriceOffer:
     store_product = snapshot.store_product
     store = store_product.store
     return PriceOffer(
@@ -115,6 +131,10 @@ def offer_from_snapshot(snapshot: Any) -> PriceOffer:
         unit_price_unit=snapshot.unit_price_unit,
         in_stock=snapshot.in_stock,
         scraped_at=snapshot.scraped_at,
+        history_average_price=getattr(history_stats, "average_price", None),
+        history_min_price=getattr(history_stats, "min_price", None),
+        history_max_price=getattr(history_stats, "max_price", None),
+        history_samples_count=int(getattr(history_stats, "samples_count", 0) or 0),
     )
 
 
@@ -152,6 +172,20 @@ def _is_stale(scraped_at: datetime, freshness_hours: int) -> bool:
     return aware < datetime.now(UTC) - timedelta(hours=freshness_hours)
 
 
+def _price_trend(offer: PriceOffer, effective_price: Decimal) -> tuple[str, Decimal | None]:
+    average = offer.history_average_price
+    if average is None or average <= 0 or offer.history_samples_count < 2:
+        return "истории мало", None
+    delta = ((effective_price - average) / average * Decimal("100")).quantize(Decimal("0.1"))
+    if offer.history_min_price is not None and effective_price <= offer.history_min_price:
+        return "минимум за период", delta
+    if delta <= Decimal("-5"):
+        return "дешевле обычного", delta
+    if delta >= Decimal("5"):
+        return "дороже обычного", delta
+    return "около средней", delta
+
+
 def _compared_offer(
     offer: PriceOffer,
     match: MatchResult,
@@ -159,6 +193,15 @@ def _compared_offer(
     freshness_hours: int,
 ) -> ComparedOffer:
     effective, label, used_card = _effective_price(offer, settings)
+    unit_price = offer.unit_price
+    unit_price_unit = offer.unit_price_unit
+    if unit_price is None:
+        unit_price, unit_price_unit = calculate_unit_price(
+            effective,
+            offer.store_product.quantity_value,
+            offer.store_product.quantity_unit,
+        )
+    trend_label, delta_percent = _price_trend(offer, effective)
     return ComparedOffer(
         offer=offer,
         match=match,
@@ -166,6 +209,10 @@ def _compared_offer(
         price_label=label,
         used_card=used_card,
         is_stale=_is_stale(offer.scraped_at, freshness_hours),
+        effective_unit_price=unit_price,
+        effective_unit_price_unit=unit_price_unit,
+        price_trend_label=trend_label,
+        price_delta_percent=delta_percent,
     )
 
 
