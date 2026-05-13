@@ -135,6 +135,7 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     context_payload = parse_mini_app_payload(
         '{"type":"command","command":"lifestyle_context"}'
     )
+    today_payload = parse_mini_app_payload('{"type":"command","command":"today"}')
     basket_payload = parse_mini_app_payload('{"type":"basket_compare","text":"молоко"}')
     assistant_payload = parse_mini_app_payload('{"type":"assistant_message","text":"btc"}')
 
@@ -149,6 +150,7 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert pantry_payload.command == "pantry_deals"
     assert budget_payload.command == "budget_plan"
     assert context_payload.command == "lifestyle_context"
+    assert today_payload.command == "today"
     assert basket_payload.text == "молоко"
     assert assistant_payload.text == "btc"
 

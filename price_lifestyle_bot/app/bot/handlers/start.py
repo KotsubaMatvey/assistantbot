@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from app.bot.commands import help_text
-from app.bot.keyboards import settings_keyboard
+from app.bot.message_utils import answer_long
 from app.db.repositories.users import get_or_create_user
 from app.db.session import SessionLocal
 
@@ -17,20 +17,24 @@ async def start_handler(message: Message) -> None:
     if message.from_user is None:
         return
     async with SessionLocal() as session:
-        user = await get_or_create_user(session, message.from_user)
+        await get_or_create_user(session, message.from_user)
         await session.commit()
-        enabled = user.settings.enabled_store_slugs
     await message.answer(
-        "Привет. Пришли список товаров, каждый товар с новой строки.\n\n"
-        "Пример:\n"
-        "молоко 2.5 1 л\n"
-        "яйца C1 10 шт\n"
-        "сахар 1 кг\n\n"
-        "В настройках можно выбрать магазины, карты лояльности и режим сравнения.",
-        reply_markup=settings_keyboard(enabled),
+        "Привет. Я твой second brain assistant.\n\n"
+        "Пиши обычным текстом — я сохраню мысль, факт, задачу, решение или ссылку в память. "
+        "Команды нужны только для точного operator-контроля.\n\n"
+        "Быстрый старт:\n"
+        "/agenda — что важно сейчас\n"
+        "/today — лента сегодняшней памяти\n"
+        "/tasks — открытые задачи\n"
+        "/status — состояние ассистента\n"
+        "/new — новая логическая сессия\n"
+        "/compact — сжать текущий контекст\n"
+        "/help — все команды\n\n"
+        "Mini App открывается кнопкой над полем ввода.",
     )
 
 
 @router.message(Command("help"))
 async def help_handler(message: Message) -> None:
-    await message.answer(help_text())
+    await answer_long(message, help_text())

@@ -18,7 +18,13 @@ export type BotCommand =
   | "pantry_deals"
   | "budget"
   | "budget_plan"
-  | "assistants";
+  | "assistants"
+  | "today"
+  | "tasks"
+  | "recent"
+  | "sources"
+  | "skills"
+  | "assistant_capabilities";
 
 export type TelegramWebApp = {
   themeParams?: {

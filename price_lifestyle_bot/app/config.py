@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     assistant_group_trigger_policy: str = "mention"
     assistant_default_mode: str = "secretary"
     tg_mini_app_url: str = ""
+    bot_enabled_features: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["all"]
+    )
+    bot_disabled_features: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    live_price_refresh_enabled: bool = False
+    live_price_refresh_limit_per_query: int = 10
     admin_telegram_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
 
     magnit_shop_code: str | None = None
@@ -58,6 +64,13 @@ class Settings(BaseSettings):
     def parse_admin_telegram_ids(cls, value: object) -> list[int] | object:
         if isinstance(value, str):
             return _parse_admin_telegram_ids(value)
+        return value
+
+    @field_validator("bot_enabled_features", "bot_disabled_features", mode="before")
+    @classmethod
+    def parse_feature_names(cls, value: object) -> list[str] | object:
+        if isinstance(value, str):
+            return _parse_feature_names(value)
         return value
 
     model_config = SettingsConfigDict(
@@ -103,6 +116,18 @@ class Settings(BaseSettings):
                 ),
                 "assistant_default_mode": os.getenv("ASSISTANT_DEFAULT_MODE", "secretary"),
                 "tg_mini_app_url": os.getenv("TG_MINI_APP_URL", ""),
+                "bot_enabled_features": _parse_feature_names(
+                    os.getenv("BOT_ENABLED_FEATURES", "all")
+                ),
+                "bot_disabled_features": _parse_feature_names(
+                    os.getenv("BOT_DISABLED_FEATURES", "")
+                ),
+                "live_price_refresh_enabled": (
+                    os.getenv("LIVE_PRICE_REFRESH_ENABLED", "false").lower() == "true"
+                ),
+                "live_price_refresh_limit_per_query": int(
+                    os.getenv("LIVE_PRICE_REFRESH_LIMIT_PER_QUERY", "10")
+                ),
                 "admin_telegram_ids": _parse_admin_telegram_ids(
                     os.getenv("ADMIN_TELEGRAM_IDS", "[]")
                 ),
@@ -136,3 +161,16 @@ def _parse_admin_telegram_ids(value: str) -> list[int]:
     if not isinstance(raw_ids, list):
         raise ValueError("ADMIN_TELEGRAM_IDS must be a JSON list or comma-separated IDs")
     return [int(item) for item in raw_ids]
+
+
+def _parse_feature_names(value: str) -> list[str]:
+    text = value.strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        raw_names = json.loads(text)
+    else:
+        raw_names = [part.strip() for part in text.split(",") if part.strip()]
+    if not isinstance(raw_names, list):
+        raise ValueError("Feature flags must be a JSON list or comma-separated names")
+    return [str(item).strip() for item in raw_names if str(item).strip()]

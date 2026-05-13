@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -47,12 +47,6 @@ async def last_basket_command(message: Message) -> None:
     await _handle_basket(message, basket.raw_text)
 
 
-@router.message(F.text, ~F.text.startswith("/"))
-async def shopping_text_handler(message: Message) -> None:
-    if message.text:
-        await _handle_basket(message, message.text)
-
-
 async def _handle_basket(message: Message, text: str) -> None:
     if message.from_user is None:
         return
@@ -76,14 +70,19 @@ async def _handle_basket(message: Message, text: str) -> None:
         store_slugs = _selected_store_slugs(effective_settings)
         await session.commit()
 
-    await message.answer("Обновляю текущие цены по выбранным магазинам.")
-    refresh_result = await refresh_prices_for_items(items, store_slugs)
-    if refresh_result.failed_store_slugs:
-        await message.answer(
-            "Не удалось обновить текущие цены: "
-            f"{', '.join(refresh_result.failed_store_slugs)}. "
-            "Использую последние сохраненные данные."
+    if settings.live_price_refresh_enabled:
+        await message.answer("Обновляю текущие цены по выбранным магазинам.")
+        refresh_result = await refresh_prices_for_items(
+            items,
+            store_slugs,
+            limit_per_query=settings.live_price_refresh_limit_per_query,
         )
+        if refresh_result.failed_store_slugs:
+            await message.answer(
+                "Не удалось обновить текущие цены: "
+                f"{', '.join(refresh_result.failed_store_slugs)}. "
+                "Использую последние сохраненные данные."
+            )
 
     async with SessionLocal() as session:
         snapshots = await get_latest_prices_by_store_products(session)

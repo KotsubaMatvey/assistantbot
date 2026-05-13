@@ -31,6 +31,12 @@ const commandState: Record<BotCommand, AssistantState> = {
   budget: "working",
   budget_plan: "working",
   assistants: "happy",
+  today: "thinking",
+  tasks: "thinking",
+  recent: "thinking",
+  sources: "thinking",
+  skills: "happy",
+  assistant_capabilities: "happy",
 };
 
 export function attachRules(bus: EventBus<AppEvents>, context: RuleContext): () => void {

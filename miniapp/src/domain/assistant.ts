@@ -16,23 +16,23 @@ export type AssistantStateMeta = {
 export const assistantStates: Record<AssistantState, AssistantStateMeta> = {
   idle: {
     kicker: "Idle",
-    title: "Жду команду",
-    copy: "Готов открыть покупки, pantry, бюджет, память или рынки.",
+    title: "Готов к контексту",
+    copy: "Сохраняю мысли, задачи, решения и ссылки в second brain.",
   },
   thinking: {
     kicker: "Thinking",
     title: "Собираю контекст",
-    copy: "Проверяю память, pantry и связанные задачи.",
+    copy: "Проверяю память, agenda, задачи и связанные решения.",
   },
   happy: {
     kicker: "Success",
     title: "Готово",
-    copy: "Маршрут найден, экономия посчитана, важное вынесено наверх.",
+    copy: "Контекст обновлён, важное вынесено наверх.",
   },
   alert: {
     kicker: "Alert",
     title: "Есть сигнал",
-    copy: "Проверяю price alerts, рынки и резкие изменения.",
+    copy: "Проверяю внешние сигналы, рынки и резкие изменения.",
   },
   shopping: {
     kicker: "Shopping mode",
@@ -42,11 +42,11 @@ export const assistantStates: Record<AssistantState, AssistantStateMeta> = {
   sad: {
     kicker: "Low battery",
     title: "Нужна разгрузка",
-    copy: "Цены выросли, бюджет давит или памяти стало слишком много.",
+    copy: "Контекста стало много — пора сжать сессию или выделить next action.",
   },
   working: {
     kicker: "Working",
     title: "Считаю",
-    copy: "Обновляю данные и отправляю безопасный payload в бот.",
+    copy: "Отправляю безопасный payload в бот и жду ответ в Telegram.",
   },
 };

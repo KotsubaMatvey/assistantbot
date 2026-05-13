@@ -12,8 +12,8 @@ import { attachRules } from "./domain/rules";
 import type { TelegramPayload, TelegramWebApp } from "./types/telegram";
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("shopping");
-  const [assistantState, setAssistantState] = useState<AssistantState>("shopping");
+  const [activeTab, setActiveTab] = useState<TabId>("assistant");
+  const [assistantState, setAssistantState] = useState<AssistantState>("idle");
   const [toast, setToast] = useState("");
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
 
@@ -58,7 +58,7 @@ export function App() {
       <header className="flex items-center justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase text-teal-300">Assistant Bot</p>
-          <h1 className="mt-1 text-3xl font-black leading-tight">Пульт дня</h1>
+          <h1 className="mt-1 text-3xl font-black leading-tight">Second brain</h1>
         </div>
         <button
           className="grid size-11 place-items-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-50 shadow-2xl"

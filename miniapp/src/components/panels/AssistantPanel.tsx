@@ -7,16 +7,16 @@ import type { AssistantState } from "../../domain/assistant";
 
 const states: { state: AssistantState; label: string }[] = [
   { state: "idle", label: "Idle" },
-  { state: "thinking", label: "Thinking" },
-  { state: "happy", label: "Success" },
-  { state: "alert", label: "Alert" },
+  { state: "thinking", label: "Context" },
+  { state: "happy", label: "Synced" },
+  { state: "alert", label: "Signal" },
   { state: "shopping", label: "Shopping" },
-  { state: "sad", label: "Low battery" },
+  { state: "sad", label: "Overload" },
   { state: "working", label: "Working" },
 ];
 
 export function AssistantPanel() {
-  const [prompt, setPrompt] = useState("что важно утром?");
+  const [prompt, setPrompt] = useState("что важно сейчас?");
 
   return (
     <section className="grid gap-3" aria-label="Ассистент">

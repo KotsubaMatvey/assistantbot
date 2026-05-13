@@ -1,0 +1,5 @@
+{
+  "installCommand": "cd miniapp && npm ci",
+  "buildCommand": "cd miniapp && npm run build",
+  "outputDirectory": "miniapp/dist"
+}

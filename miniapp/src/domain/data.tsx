@@ -8,8 +8,10 @@ import {
   CheckCircle2,
   ClipboardList,
   Database,
+  FileSearch,
   RefreshCw,
   ShoppingBasket,
+  Sparkles,
   TrendingUp,
   Wallet,
 } from "lucide-react";
@@ -29,10 +31,10 @@ export type Action = {
 };
 
 export const tabs: { id: TabId; label: string; icon: ReactNode }[] = [
-  { id: "shopping", label: "Покупки", icon: <ShoppingBasket size={16} /> },
-  { id: "markets", label: "Рынки", icon: <TrendingUp size={16} /> },
   { id: "assistant", label: "Ассистент", icon: <Bot size={16} /> },
   { id: "memory", label: "Память", icon: <Brain size={16} /> },
+  { id: "shopping", label: "Покупки", icon: <ShoppingBasket size={16} /> },
+  { id: "markets", label: "Рынки", icon: <TrendingUp size={16} /> },
 ];
 
 export const shoppingMetrics: Metric[] = [
@@ -54,7 +56,12 @@ export const assistantActions: Action[] = [
   { label: "Compact", command: "compact", icon: <CheckCircle2 size={16} /> },
   { label: "New", command: "new", icon: <Bot size={16} /> },
   { label: "Agenda", command: "agenda", icon: <CalendarCheck size={16} /> },
+  { label: "Today", command: "today", icon: <Sparkles size={16} /> },
+  { label: "Tasks", command: "tasks", icon: <ClipboardList size={16} /> },
+  { label: "Recent", command: "recent", icon: <FileSearch size={16} /> },
+  { label: "Sources", command: "sources", icon: <Database size={16} /> },
   { label: "Context", command: "lifestyle_context", icon: <Brain size={16} /> },
+  { label: "Skills", command: "skills", icon: <Sparkles size={16} /> },
   { label: "Morning", command: "morning", icon: <Activity size={16} /> },
   { label: "Assistants", command: "assistants", icon: <Bot size={16} />, primary: true },
 ];

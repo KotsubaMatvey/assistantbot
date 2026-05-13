@@ -4,8 +4,8 @@ import asyncio
 
 from aiogram import Bot
 
-from app.bot.commands import public_bot_commands
 from app.bot.dispatcher import create_dispatcher
+from app.bot.menu import configure_bot_menu
 from app.config import get_settings
 from app.db.session import dispose_engine
 from app.logging_config import configure_logging, get_logger
@@ -24,7 +24,7 @@ async def main() -> None:
     dispatcher = create_dispatcher()
     scheduler = create_scheduler(bot=bot)
     scheduler.start()
-    await bot.set_my_commands(public_bot_commands())
+    await configure_bot_menu(bot, settings)
     logger.info("bot_started", city=settings.city)
     try:
         await dispatcher.start_polling(bot)

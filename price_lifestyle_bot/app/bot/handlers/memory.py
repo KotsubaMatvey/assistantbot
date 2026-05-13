@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from sqlalchemy import desc, select
 
+from app.bot.feature_flags import is_feature_enabled
 from app.config import get_settings
 from app.db.models import BotMessage, BotSession
 from app.db.repositories.users import get_or_create_user
@@ -63,13 +64,18 @@ async def capture_handler(message: Message) -> None:
     if not text:
         await message.answer("Использование: /capture <мысль, задача, факт или ссылка>")
         return
+    await _capture_text(message, text)
 
+
+async def _capture_text(message: Message, text: str) -> None:
+    if message.from_user is None:
+        return
     memory = ObsidianMemory(get_settings().obsidian_vault_path)
     active_space = memory.get_active_space(message.from_user.id)
     space, body = parse_space_prefix(text, default_space=active_space)
     related = memory.related_context(user_id=message.from_user.id, text=body, limit=3, space=space)
     path = memory.remember_user_note(user_id=message.from_user.id, text=body, space=space)
-    lines = [f"Сохранил: {path.name}"]
+    lines = [f"Сохранил в second brain: {path.name}"]
     if related:
         lines.append("")
         lines.append("Связанный контекст:")
@@ -1005,6 +1011,9 @@ async def tool_handler(message: Message) -> None:
 
 @router.message(Command("mini_app"))
 async def mini_app_handler(message: Message) -> None:
+    if not is_feature_enabled("miniapp"):
+        await message.answer("Mini App отключён в конфигурации.")
+        return
     manifest = mini_app_manifest(get_settings().tg_mini_app_url)
     if not manifest.enabled:
         await message.answer(format_mini_app_status(manifest))
@@ -1197,3 +1206,11 @@ async def rss_digest_handler(message: Message) -> None:
     memory = ObsidianMemory(settings.obsidian_vault_path)
     memory.remember_user_note(user_id=message.from_user.id, text=format_digest_memory_note(digests))
     await message.answer(text[:3900])
+
+
+@router.message(F.text, ~F.text.startswith("/"))
+async def default_text_capture_handler(message: Message) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        return
+    await _capture_text(message, text)

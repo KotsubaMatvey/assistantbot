@@ -17,10 +17,16 @@ from app.bot.handlers.lifestyle import (
 from app.bot.handlers.markets import markets_command
 from app.bot.handlers.memory import (
     agenda_handler,
+    assistant_capabilities_handler,
     compact_handler,
     lifestyle_context_handler,
     new_session_handler,
+    recent_handler,
+    skills_handler,
+    sources_handler,
     status_handler,
+    tasks_handler,
+    today_handler,
 )
 from app.bot.handlers.shopping import _handle_basket
 from app.config import get_settings
@@ -90,6 +96,18 @@ async def mini_app_data_handler(message: Message) -> None:
         await budget_plan_handler(message)
     elif payload.command == "assistants":
         await assistants_handler(message)
+    elif payload.command == "today":
+        await today_handler(message)
+    elif payload.command == "tasks":
+        await tasks_handler(message)
+    elif payload.command == "recent":
+        await recent_handler(message)
+    elif payload.command == "sources":
+        await sources_handler(message)
+    elif payload.command == "skills":
+        await skills_handler(message)
+    elif payload.command == "assistant_capabilities":
+        await assistant_capabilities_handler(message)
 
 
 def _audit_mini_app(message: Message, action: str, detail: str) -> None:

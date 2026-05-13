@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from app.bot.commands import help_text, public_command_defs, resolve_command
+from app.bot.commands import help_text, public_bot_commands, public_command_defs, resolve_command
+from app.bot.message_utils import split_telegram_text
+from app.config import Settings
 
 
 def test_public_bot_commands_exclude_admin_commands() -> None:
@@ -102,6 +104,8 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
 def test_help_text_can_include_admin_commands() -> None:
     public_text = help_text()
     admin_text = help_text(include_admin=True)
+    assert "second brain" in public_text
+    assert "Пришли список товаров" not in public_text
     assert "/admin_status" not in public_text
     assert "/admin_status" in admin_text
     assert "/admin_diag" in admin_text
@@ -114,3 +118,27 @@ def test_resolve_command_accepts_slash_prefix() -> None:
     command = resolve_command("/prices")
     assert command is not None
     assert command.name == "prices"
+
+
+def test_public_bot_menu_only_exposes_start_and_help() -> None:
+    commands = [command.command for command in public_bot_commands()]
+
+    assert commands == ["start", "help"]
+
+
+def test_help_text_can_be_split_for_telegram_limit() -> None:
+    chunks = split_telegram_text(help_text())
+
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 3900 for chunk in chunks)
+
+
+def test_public_commands_respect_feature_flags() -> None:
+    settings = Settings(bot_disabled_features=["miniapp", "markets"])
+
+    commands = {command.name for command in public_command_defs(settings)}
+
+    assert "mini_app" not in commands
+    assert "markets" not in commands
+    assert "/mini_app" not in help_text(settings=settings)
+    assert "/markets" not in help_text(settings=settings)

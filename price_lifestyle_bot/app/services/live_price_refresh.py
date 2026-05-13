@@ -67,6 +67,8 @@ def build_live_price_queries(items: list[BasketItemParsed]) -> list[str]:
 async def refresh_prices_for_items(
     items: list[BasketItemParsed],
     store_slugs: list[str],
+    *,
+    limit_per_query: int = 10,
 ) -> LivePriceRefreshResult:
     queries = build_live_price_queries(items)
     unique_slugs = list(dict.fromkeys(store_slugs))
@@ -74,7 +76,14 @@ async def refresh_prices_for_items(
         return LivePriceRefreshResult(stores=[])
 
     results = await asyncio.gather(
-        *(refresh_store_prices_for_queries(slug, queries) for slug in unique_slugs)
+        *(
+            refresh_store_prices_for_queries(
+                slug,
+                queries,
+                limit_per_query=limit_per_query,
+            )
+            for slug in unique_slugs
+        )
     )
     return LivePriceRefreshResult(stores=list(results))
 

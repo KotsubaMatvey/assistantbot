@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from app.bot.feature_flags import is_feature_enabled
+from app.config import Settings
+
 if TYPE_CHECKING:
     from aiogram.types import BotCommand
 
@@ -38,9 +41,9 @@ COMMAND_REGISTRY: tuple[CommandDef, ...] = (
     CommandDef("source_trust", "показать доверие к источникам", "Память"),
     CommandDef("tools", "показать локальные tools", "Память"),
     CommandDef("tool", "запустить локальный tool", "Память", "<name> <input>"),
-    CommandDef("mini_app", "открыть или проверить TG Mini App", "Память"),
+    CommandDef("mini_app", "открыть пульт Mini App", "Основное"),
     CommandDef("markets", "BTC, BTC.D и главные мировые индексы", "Рынки"),
-    CommandDef("morning", "утренний дайджест: agenda, рынки, pantry, бюджет", "Ассистент"),
+    CommandDef("morning", "утренний briefing: agenda, память, сигналы и фокус", "Ассистент"),
     CommandDef("status", "краткий статус ассистента", "Ассистент"),
     CommandDef("new", "начать новую логическую сессию", "Ассистент"),
     CommandDef("compact", "сжать текущую переписку в сводку", "Ассистент"),
@@ -76,17 +79,8 @@ COMMAND_REGISTRY: tuple[CommandDef, ...] = (
     CommandDef("jobs", "показать периодические задачи", "Память"),
     CommandDef("job_runs", "показать историю запусков jobs", "Память"),
     CommandDef("job_delete", "удалить job", "Память", "<job_id>"),
-    CommandDef(
-        "preference",
-        "сохранить предпочтение для покупок, быта или бюджета",
-        "Память",
-        "<текст>",
-    ),
-    CommandDef(
-        "lifestyle_context",
-        "показать связанный контекст покупок, быта и решений",
-        "Память",
-    ),
+    CommandDef("preference", "сохранить устойчивое предпочтение", "Память", "<текст>"),
+    CommandDef("lifestyle_context", "показать связанный контекст и решения", "Память"),
     CommandDef("task", "создать задачу в памяти", "Память", "<текст>"),
     CommandDef("journal", "сохранить запись личного журнала", "Память", "<текст>"),
     CommandDef("digest", "показать дайджест памяти за период", "Память", "[дней]"),
@@ -109,8 +103,8 @@ COMMAND_REGISTRY: tuple[CommandDef, ...] = (
     CommandDef("voice_note", "сохранить расшифровку голосовой заметки", "Память", "<текст>"),
     CommandDef("decisions", "показать журнал решений", "Память"),
     CommandDef("start", "первый запуск и краткая инструкция", "Основное"),
-    CommandDef("help", "список команд и формат корзины", "Основное"),
-    CommandDef("settings", "магазины, карты лояльности и режим сравнения", "Основное"),
+    CommandDef("help", "список команд second brain", "Основное"),
+    CommandDef("settings", "настройки вторичных shopping-skills", "Покупки"),
     CommandDef("capture", "быстро сохранить мысль, задачу или факт", "Память", "<текст>"),
     CommandDef("today", "показать сегодняшнюю ленту памяти", "Память"),
     CommandDef("tasks", "показать открытые задачи из памяти", "Память"),
@@ -121,8 +115,8 @@ COMMAND_REGISTRY: tuple[CommandDef, ...] = (
     CommandDef("learn_url", "сохранить страницу в память", "Память", "<ссылка>"),
     CommandDef("rss_add", "добавить RSS/Atom-подписку", "Память", "<ссылка>"),
     CommandDef("rss_digest", "прочитать RSS/Atom-подписки", "Память"),
-    CommandDef("prices", "сравнить список покупок", "Покупки", "<список товаров>"),
-    CommandDef("last", "повторить последнюю сохраненную корзину", "Покупки"),
+    CommandDef("prices", "вторичная skill: сравнить список покупок", "Покупки", "<список товаров>"),
+    CommandDef("last", "повторить последнюю корзину shopping-skill", "Покупки"),
     CommandDef("watch_price", "следить за ценой товара", "Покупки", "<товар> <цена>"),
     CommandDef("price_alerts", "показать ценовые сигналы", "Покупки"),
     CommandDef("price_unwatch", "удалить ценовой сигнал", "Покупки", "<alert_id>"),
@@ -180,8 +174,155 @@ COMMAND_REGISTRY: tuple[CommandDef, ...] = (
 )
 
 
-def public_command_defs() -> list[CommandDef]:
-    return [command for command in COMMAND_REGISTRY if not command.admin_only]
+MEMORY_COMMANDS = {
+    "agenda",
+    "export_memory",
+    "import_memory",
+    "orders",
+    "order_add",
+    "order_delete",
+    "inbox_review",
+    "session_summary",
+    "today_tasks",
+    "task_search",
+    "task_tag",
+    "task_due",
+    "later",
+    "source_trust",
+    "tools",
+    "tool",
+    "status",
+    "new",
+    "compact",
+    "mode",
+    "trace",
+    "verbose",
+    "session_reset",
+    "usage",
+    "skills",
+    "skill",
+    "skill_add",
+    "job_add",
+    "jobs",
+    "job_runs",
+    "job_delete",
+    "preference",
+    "lifestyle_context",
+    "task",
+    "journal",
+    "digest",
+    "today",
+    "tasks",
+    "context",
+    "person",
+    "decide",
+    "recent",
+    "collections",
+    "collection",
+    "pin",
+    "pins",
+    "done",
+    "remind",
+    "reminders",
+    "spaces",
+    "space",
+    "sources",
+    "assistant_capabilities",
+    "delete_memory",
+    "approve",
+    "remember",
+    "memory",
+    "ask",
+    "learn_url",
+    "rss_add",
+    "rss_digest",
+}
+
+LIFESTYLE_COMMANDS = {
+    "watch_price",
+    "price_alerts",
+    "price_unwatch",
+    "check_alerts",
+    "pantry",
+    "pantry_add",
+    "pantry_use",
+    "pantry_plan",
+    "pantry_deals",
+    "receipt",
+    "budget",
+    "budget_set",
+    "budget_plan",
+    "family",
+    "family_create",
+    "family_join",
+    "family_add",
+    "morning",
+    "automations",
+    "automation_enable",
+    "assistants",
+    "assistant_pick",
+    "voice_note",
+    "decisions",
+}
+
+ADMIN_COMMANDS = {
+    "admin_status",
+    "admin_diag",
+    "admin_doctor",
+    "admin_secret_scan",
+    "admin_audit",
+    "admin_onboarding",
+    "pairing_approve",
+    "access_list",
+    "admin_backup",
+    "admin_logs",
+    "admin_deploy_check",
+    "admin_refresh_prices",
+    "admin_scrape_store",
+    "admin_scraper_diag",
+}
+
+COMMAND_FEATURES = {
+    **dict.fromkeys(MEMORY_COMMANDS, "memory"),
+    **dict.fromkeys(LIFESTYLE_COMMANDS, "lifestyle"),
+    **dict.fromkeys(ADMIN_COMMANDS, "admin"),
+    "start": "onboarding",
+    "help": "onboarding",
+    "settings": "settings",
+    "markets": "markets",
+    "mini_app": "miniapp",
+    "prices": "shopping",
+    "last": "shopping",
+}
+
+HELP_CATEGORY_ORDER = (
+    "Основное",
+    "Ассистент",
+    "Память",
+    "Дом",
+    "Бюджет",
+    "Семья",
+    "Рынки",
+    "Покупки",
+    "Админ",
+)
+
+
+def public_command_defs(settings: Settings | None = None) -> list[CommandDef]:
+    return [
+        command
+        for command in COMMAND_REGISTRY
+        if not command.admin_only
+        and is_feature_enabled(COMMAND_FEATURES.get(command.name, "memory"), settings)
+    ]
+
+
+def menu_command_defs() -> list[CommandDef]:
+    return [
+        command
+        for command in COMMAND_REGISTRY
+        if command.name in {"start", "help"}
+    ]
 
 
 def public_bot_commands() -> list[BotCommand]:
@@ -189,25 +330,40 @@ def public_bot_commands() -> list[BotCommand]:
 
     return [
         BotCommand(command=command.name, description=command.description)
-        for command in public_command_defs()
+        for command in menu_command_defs()
     ]
 
 
-def help_text(*, include_admin: bool = False) -> str:
+def help_text(*, include_admin: bool = False, settings: Settings | None = None) -> str:
+    mini_app_hint = (
+        "4. Открывай Mini App кнопкой над полем ввода или командой /mini_app."
+        if is_feature_enabled("miniapp", settings)
+        else "4. Mini App выключен в конфигурации; работай через чат-команды."
+    )
     lines = [
-        "Пришли список товаров строками, через запятую или точку с запятой.",
+        "Assistant Bot — персональный second brain и operator-пульт.",
         "",
-        "Примеры:",
-        "молоко 2.5 1 л",
-        "яйца C1 10 шт",
-        "сахар 1 кг",
+        "Быстрый поток:",
+        "1. Пиши обычным текстом — сохраню мысль, факт, задачу или решение.",
+        "2. Используй /agenda, /today, /tasks, /recent, /context для навигации по памяти.",
+        "3. Используй /status, /new, /compact, /mode для operator-контроля сессии.",
+        mini_app_hint,
         "",
         "Команды:",
     ]
-    for command in COMMAND_REGISTRY:
-        if command.admin_only and not include_admin:
+    commands = [
+        command
+        for command in COMMAND_REGISTRY
+        if (include_admin or not command.admin_only)
+        and is_feature_enabled(COMMAND_FEATURES.get(command.name, "memory"), settings)
+    ]
+    for category in HELP_CATEGORY_ORDER:
+        category_commands = [command for command in commands if command.category == category]
+        if not category_commands:
             continue
-        lines.append(f"{command.usage} — {command.description}")
+        lines.append("")
+        lines.append(category)
+        lines.extend(f"{command.usage} — {command.description}" for command in category_commands)
     return "\n".join(lines)
 
 

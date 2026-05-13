@@ -1,54 +1,140 @@
-# Price Lifestyle Bot
+# Assistant Bot
 
-Telegram-бот для сравнения публичных цен на продукты в магазинах города Бор,
-Нижегородская область.
+Telegram second brain assistant with local memory, operator-style commands,
+automations, a Telegram Mini App control surface, and optional skills for home,
+markets, budget and shopping.
 
-Пользователь отправляет список товаров, бот обновляет цены по выбранным магазинам,
-сравнивает последние сохранённые цены в базе и отвечает:
+The main product is no longer price comparison. Shopping and price tracking are
+secondary skills. The default interaction is:
 
-- где дешевле купить каждый товар;
-- где выгоднее купить всю корзину в одном магазине;
-- какой вариант дешевле при покупке в разных магазинах;
-- какие цены обычные, акционные или по карте.
+- write a thought, fact, task, decision or link as normal Telegram text;
+- store it in local second brain memory;
+- retrieve context through `/agenda`, `/today`, `/tasks`, `/recent`, `/context`,
+  `/memory` and `/sources`;
+- control the session through `/status`, `/new`, `/compact`, `/mode`, `/trace`
+  and `/verbose`;
+- open Mini App from the persistent Telegram button above the message field.
 
-Важно: бот не гарантирует цену на кассе. Цены берутся с сайтов магазинов и могут отличаться
-из-за региона, выбранного магазина, наличия товара, карты лояльности или изменения акции.
-В каждом ответе с ценами выводится дисклеймер.
+## Current UX
 
-## MVP-магазины
+Telegram command menu intentionally exposes only:
 
-- Smart / Сладкая жизнь — `smart.swnn.ru`
-- Магнит — `magnit.ru`
-- SPAR / EUROSPAR — `myspar.ru`
-- Пятёрочка — `5ka.ru`
-- Fix Price — `fix-price.com`
+- `/start`
+- `/help`
 
-Текущий статус scraper-адаптеров: `partial`.
+All other commands are documented inside `/help`. This keeps the chat menu small
+while preserving advanced operator commands for manual use.
 
-Причина: сайты могут требовать региональный или магазинный контекст, JavaScript, cookies или
-сессию. MVP не обходит CAPTCHA, авторизацию и защиту. Адаптеры используют публичный HTML,
-мягкие retries и короткие паузы. Playwright отключён по умолчанию и включается только через
-`ENABLE_PLAYWRIGHT=true`.
+When `TG_MINI_APP_URL` is configured, the bot sets a persistent Telegram
+`web_app` menu button named `Mini App`. The current production URL is:
 
-## Локальный запуск
+```text
+https://assistantbot-olive.vercel.app/
+```
 
-Требуется Python 3.11.
+## Core Capabilities
+
+Second brain memory:
+
+- normal text capture without a command;
+- `/capture <text>` and `/remember <text>` for explicit capture;
+- `/memory <query>`, `/ask <question>`, `/context <topic>` for retrieval;
+- `/today`, `/recent`, `/collections`, `/collection`, `/sources`;
+- spaces, pins, people notes, decisions and reminders;
+- local Markdown storage under `OBSIDIAN_VAULT_PATH`;
+- local SQLite/FTS indexing for memory search.
+
+Operator controls:
+
+- `/status` for current assistant state;
+- `/new` for a new logical session;
+- `/compact` for session summary;
+- `/session_summary` for conversation summary;
+- `/mode`, `/trace`, `/verbose`;
+- `/assistant_capabilities`, `/assistants`, `/assistant_pick`;
+- safe local tools behind explicit commands.
+
+Automation and daily flow:
+
+- `/agenda`, `/tasks`, `/today_tasks`;
+- `/job_add`, `/jobs`, `/job_runs`, `/job_delete`;
+- `/morning` for agenda, memory, market, pantry, budget and signal briefing;
+- `/automations`, `/automation_enable`;
+- `/rss_add`, `/rss_digest`, `/learn_url`.
+
+Secondary skills:
+
+- home and pantry: `/pantry`, `/pantry_add`, `/pantry_plan`, `/pantry_deals`;
+- budget and receipts: `/receipt`, `/budget`, `/budget_set`, `/budget_plan`;
+- family list: `/family_create`, `/family_join`, `/family_add`;
+- markets: `/markets`;
+- shopping and prices: `/prices`, `/last`, `/watch_price`, `/price_alerts`.
+
+## Telegram Mini App
+
+The Mini App lives in `miniapp/` and is a Vite + React + TypeScript frontend.
+It is now assistant-first:
+
+- default tab: `Ассистент`;
+- primary actions: `Status`, `Compact`, `New`, `Agenda`, `Today`, `Tasks`,
+  `Recent`, `Sources`, `Skills`, `Morning`, `Assistants`;
+- memory tab for second brain timeline;
+- shopping and markets remain available as secondary tabs.
+
+Mini App sends safe payloads through `Telegram.WebApp.sendData`. The backend
+accepts command routing, assistant helper messages and explicit basket comparison
+payloads. It does not execute arbitrary user-provided tools from Mini App.
+
+Local Mini App development:
+
+```bash
+cd miniapp
+npm install
+npm run dev
+```
+
+Production build:
+
+```bash
+npm run build --prefix miniapp
+```
+
+Vercel deploy is expected to build `miniapp/` and publish `miniapp/dist`.
+Use either a Vercel project with root directory `miniapp`, or the repository
+root config in `vercel.json`.
+
+## Local Backend Setup
+
+Requires Python 3.11.
 
 ```bash
 python -m pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Создайте Telegram-бота через BotFather и заполните:
+Create a Telegram bot through BotFather and set:
 
 ```env
 BOT_TOKEN=123456:token
 ```
 
-Для локальной БД вне Docker измените `DATABASE_URL`, например:
+For a local database outside Docker:
 
 ```env
 DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/pricebot
+```
+
+Run migrations and seed secondary shopping stores:
+
+```bash
+alembic upgrade head
+python -m app.scripts.seed_stores
+```
+
+Run the bot:
+
+```bash
+python -m app.main
 ```
 
 ## Docker
@@ -57,179 +143,198 @@ DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/pricebot
 docker compose up --build
 ```
 
-Compose поднимает:
+Compose starts:
 
 - `postgres`
 - `redis`
 - `bot`
 
-Перед запуском bot-сервиса нужен `.env` с `BOT_TOKEN`.
+The `bot` service is self-contained: it runs `alembic upgrade head`, then
+`python -m app.scripts.seed_stores`, then starts polling.
 
-## Миграции
+Important: Docker build needs network access to PyPI when dependency layers are
+not cached. Runtime can continue from an already built image, but clean rebuilds
+need registry access.
 
-```bash
-alembic upgrade head
+## Configuration
+
+Core environment:
+
+```env
+BOT_TOKEN=
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/pricebot
+REDIS_URL=redis://redis:6379/0
+ENV=local
+CITY=Бор
+TIMEZONE=Europe/Moscow
+OBSIDIAN_VAULT_PATH=assistantbotmemory
+TG_MINI_APP_URL=https://assistantbot-olive.vercel.app/
+ADMIN_TELEGRAM_IDS=[]
 ```
 
-Миграция создаёт таблицы:
+Assistant security:
 
-- users, user_settings
-- stores
-- products, store_products
-- price_snapshots
-- baskets, basket_items
-- scrape_runs
-
-## Seed Stores
-
-```bash
-python -m app.scripts.seed_stores
+```env
+ASSISTANT_ACCESS_MODE=pairing
+ASSISTANT_APPROVAL_TTL_MINUTES=30
+ASSISTANT_PAIRING_TTL_MINUTES=15
+ASSISTANT_CONTEXT_VISIBILITY=allowlist
+ASSISTANT_GROUP_TRIGGER_POLICY=mention
+ASSISTANT_DEFAULT_MODE=secretary
 ```
 
-Команда добавляет 5 магазинов MVP для города `Бор`.
+Feature flags:
 
-## Scraping
+```env
+BOT_ENABLED_FEATURES=all
+BOT_DISABLED_FEATURES=
+```
 
-Один магазин:
+Known feature names:
+
+- `onboarding`
+- `settings`
+- `memory`
+- `lifestyle`
+- `markets`
+- `miniapp`
+- `shopping`
+- `admin`
+
+Example trimmed assistant-only profile:
+
+```env
+BOT_ENABLED_FEATURES=onboarding,memory,lifestyle,miniapp
+BOT_DISABLED_FEATURES=
+```
+
+Shopping speed controls:
+
+```env
+LIVE_PRICE_REFRESH_ENABLED=false
+LIVE_PRICE_REFRESH_LIMIT_PER_QUERY=10
+PRICE_FRESHNESS_HOURS=24
+SCRAPE_INTERVAL_HOURS=12
+ENABLE_PLAYWRIGHT=false
+```
+
+`LIVE_PRICE_REFRESH_ENABLED=false` is the default because second brain responses
+should stay fast. Use `/prices` and admin refresh commands when shopping data is
+needed.
+
+## Database
+
+Current Alembic head:
+
+```text
+0002_bot_sessions
+```
+
+Migrations create:
+
+- `users`, `user_settings`
+- `stores`
+- `products`, `store_products`
+- `price_snapshots`
+- `baskets`, `basket_items`
+- `scrape_runs`
+- `bot_sessions`, `bot_messages`
+
+`bot_sessions` and `bot_messages` back interaction logging and logical session
+history.
+
+## Memory Storage
+
+By default memory is stored in `assistantbotmemory/`. The bot writes Markdown and
+local metadata under:
+
+- `inbox`
+- `users/<telegram_id>/notes`
+- `users/<telegram_id>/daily`
+- `users/<telegram_id>/baskets`
+- `profile.md`
+
+Memory commands and `/ask` are local and rule-based. External network access is
+only used for explicit commands such as `/learn_url`, `/rss_digest`, market data
+or scraping/admin refresh.
+
+## Shopping Skill
+
+Shopping remains available, but it is not the primary product mode.
+
+Supported store seeds:
+
+- Smart / Сладкая жизнь — `smart.swnn.ru`
+- Магнит — `magnit.ru`
+- SPAR / EUROSPAR — `myspar.ru`
+- Пятёрочка — `5ka.ru`
+- Fix Price — `fix-price.com`
+
+Scraper adapters are `partial`. The bot does not guarantee checkout prices:
+public website data can differ by region, store, loyalty card, availability and
+promotion timing.
+
+Manual scraping:
 
 ```bash
 python -m app.scripts.scrape_once --store smart --limit 50
-```
-
-Все магазины:
-
-```bash
 python -m app.scripts.refresh_prices --all
-```
-
-Через Makefile:
-
-```bash
 make scrape STORE=smart LIMIT=50
 ```
 
-Scraper сохраняет `StoreProduct` и новый `PriceSnapshot`. История цен не перезаписывается.
+Scrapers do not bypass CAPTCHA, authentication or private APIs.
 
-## Telegram-команды
+## Admin Commands
 
-- `/start` — приветствие, инструкция, выбор магазинов и карт.
-- `/help` — примеры списков.
-- `/settings` — магазины, карты лояльности, режим сравнения.
-- `/remember <заметка>` — сохранить заметку в Obsidian-память.
-- `/memory <запрос>` — найти заметку в Obsidian-памяти.
-- `/ask <вопрос>` — ответить на вопрос по сохранённой памяти.
-- `/learn_url <ссылка>` — прочитать страницу и сохранить краткую заметку в память.
-- `/rss_add <ссылка>` — добавить RSS/Atom-ленту.
-- `/rss_digest` — прочитать RSS/Atom-подписки и сохранить дайджест в память.
-- `/prices молоко 2.5 1 л; яйца C1 10 шт` — сравнение.
-- `/markets` — BTC, BTC.D, S&P 500, Nasdaq и Dow Jones.
-- `/morning` — утренний дайджест: agenda, рынки, pantry, бюджет и price alerts.
-- `/status`, `/compact`, `/new` — быстрые команды ассистента в стиле operator console.
-- `/assistants`, `/assistant_pick buyer` — безопасные помощники Secretary / Buyer /
-  Market Analyst без произвольного выполнения кода.
-- `/mini_app` — ссылка на Telegram Mini App, если задан `TG_MINI_APP_URL`.
-- Обычный текст без команды трактуется как список покупок.
+Admin commands require a Telegram ID from `ADMIN_TELEGRAM_IDS`:
 
-Количество в корзине можно указывать множителем: `2x молоко 2.5 1 л` или
-`молоко 2.5 1 л x2`. Итоги корзины умножаются на это количество, а поиск цен не засоряется
-самим множителем.
-
-Для утреннего отчёта по рынкам можно создать job:
-
-```text
-/job_add daily 08:00 markets morning market watch
-```
-
-Для полного утреннего пульта:
-
-```text
-/automation_enable morning_digest
-```
-
-## Покупки, дом и бюджет
-
-- `/watch_price молоко 2.5 1 л < 90` — следить за ценой товара.
-- `/price_alerts`, `/check_alerts`, `/price_unwatch <id>` — управление price alerts.
-- `/pantry_add молоко 2 л 2026-05-12` — добавить продукт на домашний склад.
-- `/pantry`, `/pantry_use <id|name> [кол-во]`, `/pantry_plan` — склад и что докупить.
-- `/receipt магазин: Smart ...` — сохранить текстовый чек.
-- `/budget_set 2026-05 25000`, `/budget 2026-05` — месячный бюджет и расходы.
-- `/family_create Home`, `/family_join <code>`, `/family_add <пункт>` — семейный список.
-- `/voice_note <текст>` — сохранить расшифровку голосовой заметки.
-
-## Obsidian-память
-
-По умолчанию память хранится в папке `assistantbotmemory`. Путь можно изменить:
-
-```env
-OBSIDIAN_VAULT_PATH=E:\assistantbot\assistantbotmemory
-```
-
-Бот пишет Markdown-файлы в структуру `inbox`, `users/<telegram_id>/notes`,
-`users/<telegram_id>/daily`, `users/<telegram_id>/baskets` и `profile.md`.
-Заметки классифицируются локальными правилами: факт, предпочтение, задача, ссылка или корзина.
-Поиск `/memory` и ответ `/ask` работают локально по словам, синонимам и тегам, без внешних AI API.
-Команды `/learn_url` и `/rss_digest` ходят в интернет только по явному запросу пользователя.
-
-Admin-команды доступны только Telegram ID из `ADMIN_TELEGRAM_IDS`:
-
-- `/admin_refresh_prices`
 - `/admin_status`
-- `/admin_scrape_store <store_slug>`
 - `/admin_diag`
+- `/admin_doctor`
+- `/admin_secret_scan`
+- `/admin_audit`
+- `/admin_onboarding`
+- `/admin_refresh_prices`
+- `/admin_scrape_store <store_slug>`
+- `/admin_scraper_diag <store_slug> [query]`
 - `/admin_backup`
 - `/admin_logs`
 - `/admin_deploy_check`
-- `/admin_scraper_diag <store_slug> [query]`
 
-## Telegram Mini App
-
-Интерфейс лежит в `miniapp/`. Это Vite + React + TypeScript frontend для пульта бота:
-покупки, рынки, ассистент, память, pantry, budget и price alerts. Чтобы подключить его к Telegram:
-
-1. задеплойте `miniapp/` как Vite static app;
-2. пропишите `TG_MINI_APP_URL` в `.env`;
-3. перезапустите бота и откройте `/mini_app`.
-
-Mini App отправляет payload через `Telegram.WebApp.sendData`; backend уже принимает безопасные
-payload для сравнения корзины, команд `markets`, `status`, `agenda`, `compact`, `new`,
-`morning`, `price_alerts`, `pantry`, `budget`, `assistants` и встроенного pixel helper.
-
-## Тесты и качество
+## Tests And Quality
 
 ```bash
-make test
-make lint
+python -m pytest
+python -m ruff check .
+npm run build --prefix miniapp
 ```
 
-Unit-тесты не ходят в интернет. Интеграционные тесты для реальных сайтов должны быть помечены
-`@pytest.mark.integration`.
+Unit tests should not depend on internet access. Real website tests must be
+marked with `@pytest.mark.integration`.
 
-## Как добавить магазин
+## Deployment Checklist
 
-1. Добавить store в `DEFAULT_STORES`.
-2. Создать adapter в `app/scrapers/<store>.py`.
-3. Зарегистрировать его в `app/scrapers/registry.py`.
-4. Scraper должен возвращать `list[ScrapedProduct]`.
-5. Добавить fixture-based contract test без интернета.
-6. Описать ограничения сайта в README.
+Backend:
 
-## Ограничения scraping
+1. Set `.env`.
+2. Run `docker compose up --build -d`.
+3. Check `docker compose logs --tail=100 bot`.
+4. Confirm Alembic head with `docker compose exec -T bot alembic current`.
 
-- CAPTCHA не обходится.
-- Авторизация не обходится.
-- Приватные API и ключи не используются.
-- Перед сравнением бот пробует обновить цены по товарам из пользовательского запроса.
-- Соблюдаются короткие timeout, retry с backoff и паузы между seed-запросами.
-- Если публичный HTML нестабилен, adapter остаётся `partial`.
+Mini App:
+
+1. Build `miniapp/`.
+2. Deploy static output to Vercel.
+3. Set `TG_MINI_APP_URL` to the HTTPS deployment URL.
+4. Restart bot so `set_chat_menu_button` points Telegram to the current URL.
+5. Verify with `Bot.get_chat_menu_button()`.
 
 ## Roadmap
 
-- история цен;
-- уведомления о скидках;
-- домашние списки покупок;
-- избранные товары;
-- семейный список;
-- сканирование чеков;
-- сканирование штрихкодов;
-- бюджет на продукты.
+- live Mini App state backed by backend API and Telegram initData verification;
+- faster response pipeline for memory capture and retrieval;
+- richer agenda and task triage;
+- better compaction summaries and automatic memory flush;
+- optional LLM-backed answers with explicit capability flags;
+- production deployment docs for Vercel and Docker;
+- shopping skill hardening as a secondary module.

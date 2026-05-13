@@ -1,16 +1,16 @@
 # Assistant Bot Mini App
 
-Vite + React + TypeScript Telegram Mini App for the bot control surface.
+Vite + React + TypeScript Telegram Mini App for the second brain control surface.
 
 ## What is included
 
-- shopping composer with multiplier-aware examples;
-- market watch dashboard for BTC, BTC.D, S&P 500, Nasdaq and Dow Jones;
-- assistant controls inspired by OpenClaw operator commands: status, compact, new, agenda;
+- assistant-first dashboard with status, compact, new, agenda, today, tasks and context actions;
 - animated pixel assistant foundation that sends safe routing payloads to the bot;
 - typed client-side event bus and rule engine for UI state transitions;
+- memory timeline mock for future live data;
+- market watch dashboard for BTC, BTC.D, S&P 500, Nasdaq and Dow Jones;
+- shopping composer with multiplier-aware examples;
 - pantry, budget and price alert quick actions;
-- memory timeline mock for future live data.
 
 ## Local development
 
@@ -29,6 +29,21 @@ Telegram-specific actions fall back to showing the payload that would be sent th
 3. Restart the bot.
 4. Run `/mini_app` in Telegram.
 
-The backend accepts `WebAppData` payloads for basket comparison, command routing and the
-pixel helper. The helper is intentionally safe: it routes to existing bot commands instead
-of running arbitrary tools.
+The backend accepts `WebAppData` payloads for second brain command routing, basket comparison
+and the pixel helper. The helper is intentionally safe: it routes to existing bot commands
+instead of running arbitrary tools.
+
+## Vercel
+
+This folder includes `vercel.json`:
+
+```json
+{
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
+}
+```
+
+If the Vercel project root is the repository root, the repository-level `vercel.json`
+uses `miniapp/dist` as the output directory instead.

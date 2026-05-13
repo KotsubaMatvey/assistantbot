@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "price-lifestyle-bot"
 version = "0.1.0"
-description = "Telegram bot for comparing grocery prices in Bor, Nizhny Novgorod region."
+description = "Telegram second brain assistant with memory, operator commands, automations, Mini App, and optional shopping skills."
 requires-python = ">=3.11"
 dependencies = [
   "aiogram>=3.6,<4",

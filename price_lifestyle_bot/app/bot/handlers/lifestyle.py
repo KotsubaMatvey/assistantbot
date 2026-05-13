@@ -485,7 +485,12 @@ async def _pantry_deals_report(message: Message) -> str:
         )
         await session.commit()
 
-    await refresh_prices_for_items(items, store_slugs)
+    if settings.live_price_refresh_enabled:
+        await refresh_prices_for_items(
+            items,
+            store_slugs,
+            limit_per_query=settings.live_price_refresh_limit_per_query,
+        )
 
     async with SessionLocal() as session:
         snapshots = await get_latest_prices_by_store_products(session)

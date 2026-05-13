@@ -24,6 +24,12 @@ ALLOWED_COMMANDS = {
     "budget",
     "budget_plan",
     "assistants",
+    "today",
+    "tasks",
+    "recent",
+    "sources",
+    "skills",
+    "assistant_capabilities",
 }
 
 

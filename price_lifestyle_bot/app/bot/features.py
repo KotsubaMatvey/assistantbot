@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from aiogram import Router
 
+from app.bot.feature_flags import enabled_feature_names
 from app.bot.handlers import admin, lifestyle, markets, memory, miniapp, settings, shopping, start
 
 
@@ -29,6 +30,7 @@ FEATURE_REGISTRY: tuple[BotFeature, ...] = (
 
 
 def enabled_routers() -> Iterable[Router]:
+    enabled = set(enabled_feature_names())
     for feature in FEATURE_REGISTRY:
-        if feature.enabled:
+        if feature.name in enabled:
             yield from feature.routers
