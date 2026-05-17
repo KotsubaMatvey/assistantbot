@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.services.file_io import atomic_write_text
+
 
 @dataclass(frozen=True)
 class FollowUp:
@@ -65,14 +67,13 @@ class FollowUpStore:
 
     def _write_followups(self, *, user_id: int, followups: list[FollowUp]) -> None:
         path = self._path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(
                 [_followup_to_dict(item) for item in followups],
                 ensure_ascii=False,
                 indent=2,
             ),
-            encoding="utf-8",
         )
 
     def _path(self, user_id: int) -> Path:

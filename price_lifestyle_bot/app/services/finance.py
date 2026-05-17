@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from app.services.file_io import atomic_write_text
+
 
 @dataclass(frozen=True)
 class FinanceTransaction:
@@ -236,22 +238,20 @@ class FinanceStore:
         transactions: list[FinanceTransaction],
     ) -> None:
         path = self._transactions_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(
                 [_transaction_to_dict(item) for item in transactions],
                 ensure_ascii=False,
                 indent=2,
             ),
-            encoding="utf-8",
         )
 
     def _write_accounts(self, *, user_id: int, accounts: list[FinanceAccount]) -> None:
         path = self._accounts_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps([_account_to_dict(item) for item in accounts], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
     def _write_subscriptions(
@@ -261,14 +261,13 @@ class FinanceStore:
         subscriptions: list[Subscription],
     ) -> None:
         path = self._subscriptions_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(
                 [_subscription_to_dict(item) for item in subscriptions],
                 ensure_ascii=False,
                 indent=2,
             ),
-            encoding="utf-8",
         )
 
     def _transactions_path(self, user_id: int) -> Path:

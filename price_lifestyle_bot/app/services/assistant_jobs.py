@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from app.services.file_io import atomic_write_text
+
 
 @dataclass(frozen=True)
 class AssistantJob:
@@ -133,17 +135,15 @@ class AssistantJobStore:
         return True
 
     def _write_jobs(self, jobs: list[AssistantJob]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        self.jobs_path.write_text(
+        atomic_write_text(
+            self.jobs_path,
             json.dumps([_job_to_dict(job) for job in jobs], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
     def _write_runs(self, runs: list[AssistantJobRun]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        self.runs_path.write_text(
+        atomic_write_text(
+            self.runs_path,
             json.dumps([_run_to_dict(run) for run in runs], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
 

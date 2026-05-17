@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.services.file_io import atomic_write_text
+
 
 @dataclass(frozen=True)
 class StandingOrder:
@@ -61,10 +63,9 @@ class StandingOrderStore:
         return True
 
     def _write_orders(self, orders: list[StandingOrder]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
+        atomic_write_text(
+            self.path,
             json.dumps([_order_to_dict(order) for order in orders], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
 

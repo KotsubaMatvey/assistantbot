@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from app.services.basket_parser import BasketItemParsed
+from app.services.file_io import atomic_write_text
 
 
 @dataclass(frozen=True)
@@ -108,8 +109,7 @@ class SpendingStore:
         budgets = self._read_budgets(user_id)
         budgets[month] = str(amount)
         path = self._budgets_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(budgets, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(budgets, ensure_ascii=False, indent=2))
 
     def budget_summary(
         self,
@@ -197,14 +197,13 @@ class SpendingStore:
 
     def _write_receipts(self, *, user_id: int, receipts: list[Receipt]) -> None:
         path = self._receipts_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(
                 [_receipt_to_dict(receipt) for receipt in receipts],
                 ensure_ascii=False,
                 indent=2,
             ),
-            encoding="utf-8",
         )
 
     def _read_budgets(self, user_id: int) -> dict[str, str]:

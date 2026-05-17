@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.services.file_io import atomic_write_text
 from app.services.knowledge_ingestion import (
     fetch_feed_digests,
     fetch_page_summary,
@@ -182,14 +183,13 @@ class SourceStore:
 
     def _write_sources(self, user_id: int, sources: list[SourceRecord]) -> None:
         path = self._sources_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps(
                 [_source_to_dict(source) for source in sources],
                 ensure_ascii=False,
                 indent=2,
             ),
-            encoding="utf-8",
         )
 
     def _sources_path(self, user_id: int) -> Path:

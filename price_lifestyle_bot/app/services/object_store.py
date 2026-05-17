@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.services.file_io import atomic_write_text
+
 OBJECT_TYPES = {
     "note",
     "task",
@@ -210,10 +212,9 @@ class ObjectStore:
 
     def _write_objects(self, *, user_id: int, objects: list[AssistantObject]) -> None:
         path = self._objects_path(user_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
+        atomic_write_text(
+            path,
             json.dumps([_object_to_dict(obj) for obj in objects], ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
 
     def _objects_path(self, user_id: int) -> Path:
