@@ -1,4 +1,4 @@
-import { Bell, CalendarCheck, ListChecks, NotebookPen, Plus, RefreshCw } from "lucide-react";
+import { Bell, ListChecks, NotebookPen, Plus, RefreshCw, Users } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { ActionButton } from "../ActionButton";
@@ -18,6 +18,7 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
   const [taskText, setTaskText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [reminderText, setReminderText] = useState("");
+  const [person, setPerson] = useState({ name: "", note: "" });
 
   async function submitTask(event: FormEvent) {
     event.preventDefault();
@@ -44,6 +45,18 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
     }
     await onMutate("/api/miniapp/reminder", { text: reminderText.trim() });
     setReminderText("");
+  }
+
+  async function submitPerson(event: FormEvent) {
+    event.preventDefault();
+    if (!person.name.trim() || !person.note.trim()) {
+      return;
+    }
+    await onMutate("/api/miniapp/person", {
+      name: person.name.trim(),
+      note: person.note.trim(),
+    });
+    setPerson({ name: "", note: "" });
   }
 
   return (
@@ -99,6 +112,7 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
           onChange={setReminderText}
           onSubmit={submitReminder}
         />
+        <PersonForm person={person} onChange={setPerson} onSubmit={submitPerson} />
       </div>
 
       <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
@@ -114,6 +128,42 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
         ))}
       </div>
     </section>
+  );
+}
+
+function PersonForm({
+  person,
+  onChange,
+  onSubmit,
+}: {
+  person: { name: string; note: string };
+  onChange: (person: { name: string; note: string }) => void;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  return (
+    <form className="grid grid-cols-[94px_1fr_1.4fr_44px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
+      <label className="flex items-center gap-2 text-xs font-black uppercase text-zinc-400">
+        <Users size={16} />
+        Person
+      </label>
+      <input
+        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        value={person.name}
+        onChange={(event) => onChange({ ...person, name: event.target.value })}
+      />
+      <input
+        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        value={person.note}
+        onChange={(event) => onChange({ ...person, note: event.target.value })}
+      />
+      <button
+        className="grid min-h-10 place-items-center rounded-lg border border-teal-300 bg-teal-300 text-zinc-950"
+        type="submit"
+        aria-label="Add Person"
+      >
+        <Plus size={16} />
+      </button>
+    </form>
   );
 }
 

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 MAX_RAW_PAYLOAD_BYTES = 8_192
 MAX_BASKET_TEXT_CHARS = 2_000
 MAX_ASSISTANT_TEXT_CHARS = 500
+MAX_FORM_TEXT_CHARS = 2_000
+MAX_FORM_FIELD_CHARS = 200
 
 ALLOWED_COMMANDS = {
     "markets",
@@ -62,6 +64,7 @@ class MiniAppPayload:
     type: str
     command: str = ""
     text: str = ""
+    data: dict[str, str] = field(default_factory=dict)
 
 
 def mini_app_manifest(url: str) -> MiniAppManifest:
@@ -105,6 +108,8 @@ def mini_app_manifest(url: str) -> MiniAppManifest:
             "lifestyle_context",
             "admin_doctor",
             "live_mini_app_api",
+            "mini_app_event_log",
+            "mini_app_telegram_fallback",
             "mini_app_finance_forms",
             "mini_app_task_capture",
         ],
@@ -154,4 +159,60 @@ def parse_mini_app_payload(raw_data: str) -> MiniAppPayload:
         if len(text) > MAX_ASSISTANT_TEXT_CHARS:
             raise ValueError("assistant message is too large")
         return MiniAppPayload(type=payload_type, text=text)
+    if payload_type in {"task_create", "note_create", "reminder_create", "receipt_save"}:
+        text = _required_field(raw, "text", max_chars=MAX_FORM_TEXT_CHARS)
+        return MiniAppPayload(type=payload_type, text=text)
+    if payload_type == "person_note":
+        return MiniAppPayload(
+            type=payload_type,
+            data={
+                "name": _required_field(raw, "name", max_chars=MAX_FORM_FIELD_CHARS),
+                "note": _required_field(raw, "note", max_chars=MAX_FORM_TEXT_CHARS),
+            },
+        )
+    if payload_type == "finance_transaction":
+        kind = _required_field(raw, "kind", max_chars=20).lower()
+        if kind not in {"expense", "income"}:
+            raise ValueError("transaction kind must be expense or income")
+        return MiniAppPayload(
+            type=payload_type,
+            data={
+                "kind": kind,
+                "amount": _required_field(raw, "amount", max_chars=MAX_FORM_FIELD_CHARS),
+                "category": _required_field(raw, "category", max_chars=MAX_FORM_FIELD_CHARS),
+                "note": _optional_field(raw, "note", max_chars=MAX_FORM_TEXT_CHARS),
+            },
+        )
+    if payload_type == "finance_account":
+        return MiniAppPayload(
+            type=payload_type,
+            data={
+                "name": _required_field(raw, "name", max_chars=MAX_FORM_FIELD_CHARS),
+                "balance": _required_field(raw, "balance", max_chars=MAX_FORM_FIELD_CHARS),
+            },
+        )
+    if payload_type == "finance_subscription":
+        return MiniAppPayload(
+            type=payload_type,
+            data={
+                "name": _required_field(raw, "name", max_chars=MAX_FORM_FIELD_CHARS),
+                "amount": _required_field(raw, "amount", max_chars=MAX_FORM_FIELD_CHARS),
+            },
+        )
     raise ValueError("unsupported Mini App payload type")
+
+
+def _required_field(raw: dict[str, Any], name: str, *, max_chars: int) -> str:
+    value = str(raw.get(name, "")).strip()
+    if not value:
+        raise ValueError(f"{name} is empty")
+    if len(value) > max_chars:
+        raise ValueError(f"{name} is too large")
+    return value
+
+
+def _optional_field(raw: dict[str, Any], name: str, *, max_chars: int) -> str:
+    value = str(raw.get(name, "")).strip()
+    if len(value) > max_chars:
+        raise ValueError(f"{name} is too large")
+    return value

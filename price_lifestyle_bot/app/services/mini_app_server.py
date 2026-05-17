@@ -11,6 +11,7 @@ from aiohttp import web
 
 from app.config import Settings
 from app.logging_config import get_logger
+from app.services.audit_log import AuditLogStore
 from app.services.market_watch import analyze_market_watch, fetch_market_watch
 from app.services.mini_app_state import (
     add_mini_app_note,
@@ -62,6 +63,7 @@ def create_mini_app_web_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/health", _health)
     app.router.add_get("/api/miniapp/state", _state)
     app.router.add_get("/api/miniapp/markets", _markets)
+    app.router.add_post("/api/miniapp/event", _event)
     app.router.add_post("/api/miniapp/finance/transaction", _finance_transaction)
     app.router.add_post("/api/miniapp/finance/account", _finance_account)
     app.router.add_post("/api/miniapp/finance/subscription", _finance_subscription)
@@ -112,6 +114,17 @@ async def _markets(request: web.Request) -> web.Response:
     )
 
 
+async def _event(request: web.Request) -> web.Response:
+    user_id = _user_id_from_request(request)
+    payload = await _json_payload(request)
+    name = str(payload.get("name", "")).strip().lower().replace(" ", "_")[:80]
+    if not name:
+        raise web.HTTPBadRequest(text="event name is empty")
+    detail = _event_detail(payload.get("data", {}))
+    _record_mini_app_event(request, user_id, f"mini_app_{name}", detail)
+    return web.json_response({"ok": True})
+
+
 async def _finance_transaction(request: web.Request) -> web.Response:
     user_id = _user_id_from_request(request)
     payload = await _json_payload(request)
@@ -126,6 +139,12 @@ async def _finance_transaction(request: web.Request) -> web.Response:
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_finance_transaction",
+        f"{payload.get('kind', '')} {payload.get('amount', '')} {payload.get('category', '')}",
+    )
     return _state_response(request, user_id)
 
 
@@ -141,6 +160,12 @@ async def _finance_account(request: web.Request) -> web.Response:
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_account_update",
+        str(payload.get("name", "")),
+    )
     return _state_response(request, user_id)
 
 
@@ -156,6 +181,12 @@ async def _finance_subscription(request: web.Request) -> web.Response:
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_subscription_update",
+        str(payload.get("name", "")),
+    )
     return _state_response(request, user_id)
 
 
@@ -166,6 +197,7 @@ async def _task(request: web.Request) -> web.Response:
     if not text:
         raise web.HTTPBadRequest(text="task text is empty")
     add_mini_app_task(vault_path=_settings(request).obsidian_vault_path, user_id=user_id, text=text)
+    _record_mini_app_event(request, user_id, "mini_app_task_create", text)
     return _state_response(request, user_id)
 
 
@@ -176,6 +208,7 @@ async def _note(request: web.Request) -> web.Response:
     if not text:
         raise web.HTTPBadRequest(text="note text is empty")
     add_mini_app_note(vault_path=_settings(request).obsidian_vault_path, user_id=user_id, text=text)
+    _record_mini_app_event(request, user_id, "mini_app_note_create", text)
     return _state_response(request, user_id)
 
 
@@ -191,6 +224,12 @@ async def _reminder(request: web.Request) -> web.Response:
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_reminder_create",
+        str(payload.get("text", "")),
+    )
     return _state_response(request, user_id)
 
 
@@ -206,6 +245,7 @@ async def _person(request: web.Request) -> web.Response:
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(request, user_id, "mini_app_person_note", str(payload.get("name", "")))
     return _state_response(request, user_id)
 
 
@@ -220,6 +260,12 @@ async def _receipt(request: web.Request) -> web.Response:
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_receipt_save",
+        f"chars={len(str(payload.get('text', '')))}",
+    )
     return _state_response(request, user_id)
 
 
@@ -301,6 +347,29 @@ def _add_static_routes(app: web.Application, settings: Settings) -> None:
 
 def _settings(request: web.Request) -> Settings:
     return request.app["settings"]
+
+
+def _record_mini_app_event(
+    request: web.Request,
+    user_id: int,
+    action: str,
+    detail: str,
+) -> None:
+    try:
+        AuditLogStore(_settings(request).obsidian_vault_path).record(
+            user_id=user_id,
+            action=action,
+            detail=detail,
+        )
+    except Exception as exc:
+        logger.warning("mini_app_event_audit_failed", action=action, error=str(exc))
+
+
+def _event_detail(raw: object) -> str:
+    if isinstance(raw, dict):
+        safe = {str(key)[:50]: str(value)[:120] for key, value in raw.items()}
+        return json.dumps(safe, ensure_ascii=False, sort_keys=True)[:500]
+    return str(raw)[:500]
 
 
 @web.middleware

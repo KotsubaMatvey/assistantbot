@@ -1,7 +1,21 @@
 export type TelegramPayload =
   | { type: "command"; command: BotCommand }
   | { type: "basket_compare"; text: string }
-  | { type: "assistant_message"; text: string };
+  | { type: "assistant_message"; text: string }
+  | { type: "task_create"; text: string }
+  | { type: "note_create"; text: string }
+  | { type: "reminder_create"; text: string }
+  | { type: "person_note"; name: string; note: string }
+  | {
+      type: "finance_transaction";
+      kind: "expense" | "income";
+      amount: string;
+      category: string;
+      note?: string;
+    }
+  | { type: "finance_account"; name: string; balance: string }
+  | { type: "finance_subscription"; name: string; amount: string }
+  | { type: "receipt_save"; text: string };
 
 export type BotCommand =
   | "markets"

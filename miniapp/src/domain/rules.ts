@@ -6,6 +6,7 @@ type RuleContext = {
   setAssistantState: (state: AssistantState) => void;
   sendTelegramPayload: (payload: TelegramPayload) => void;
   showToast: (message: string) => void;
+  recordEvent?: (name: string, data?: Record<string, unknown>) => void;
 };
 
 const tabState: Record<TabId, AssistantState> = {
@@ -62,12 +63,14 @@ export function attachRules(bus: EventBus<AppEvents>, context: RuleContext): () 
   const disposers = [
     bus.on("tab:selected", ({ tab }) => {
       context.setAssistantState(tabState[tab]);
+      context.recordEvent?.("tab_selected", { tab });
     }),
     bus.on("assistant:set-state", ({ state }) => {
       context.setAssistantState(state);
     }),
     bus.on("command:send", ({ command }) => {
       context.setAssistantState(commandState[command]);
+      context.recordEvent?.("command_send", { command });
       context.sendTelegramPayload({ type: "command", command });
     }),
     bus.on("basket:compare", ({ text }) => {
@@ -78,6 +81,7 @@ export function attachRules(bus: EventBus<AppEvents>, context: RuleContext): () 
         return;
       }
       context.setAssistantState("working");
+      context.recordEvent?.("basket_compare", { chars: cleanText.length });
       context.sendTelegramPayload({ type: "basket_compare", text: cleanText });
     }),
     bus.on("assistant:prompt", ({ text }) => {
@@ -88,6 +92,7 @@ export function attachRules(bus: EventBus<AppEvents>, context: RuleContext): () 
         return;
       }
       context.setAssistantState("thinking");
+      context.recordEvent?.("assistant_prompt", { chars: cleanText.length });
       context.sendTelegramPayload({ type: "assistant_message", text: cleanText });
     }),
     bus.on("toast:show", ({ message }) => {

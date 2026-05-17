@@ -60,6 +60,18 @@ export function MemoryPanel({ state, loading, error, onRefresh }: MemoryPanelPro
         ))}
       </div>
 
+      <div className="grid gap-2">
+        {(state?.events ?? []).slice(0, 6).map((event) => (
+          <article key={event.id} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
+            <span className="text-xs font-black uppercase text-teal-300">{event.action}</span>
+            <strong className="mt-1 block break-words text-sm text-zinc-50">
+              {event.detail || "Mini App event"}
+            </strong>
+            <span className="mt-1 block text-xs text-zinc-400">{event.created_at}</span>
+          </article>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 gap-2 max-[420px]:grid-cols-1">
         <ActionButton
           primary

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from app.services.agenda import build_agenda
 from app.services.assistant_jobs import AssistantJobStore
+from app.services.audit_log import AuditLogStore
 from app.services.finance import FinanceStore, parse_amount
 from app.services.memory_tree import MemoryTreeStore
 from app.services.object_store import ObjectStore
@@ -40,6 +41,11 @@ def build_mini_app_state(
     object_stats = objects.stats(user_id=user_id)
     sources = SourceStore(vault_path).list_sources(user_id=user_id)
     health = MemoryTreeStore(vault_path).health(memory=memory, user_id=user_id)
+    events = [
+        event
+        for event in AuditLogStore(vault_path).list_events(limit=100)
+        if event.user_id == user_id and event.action.startswith("mini_app_")
+    ][:12]
     agenda = build_agenda(
         memory=memory,
         jobs=AssistantJobStore(vault_path, timezone_name=timezone_name),
@@ -168,6 +174,15 @@ def build_mini_app_state(
                     "last_error": source.last_error,
                 }
                 for source in sources
+            ],
+            "events": [
+                {
+                    "id": event.id,
+                    "action": event.action,
+                    "detail": event.detail,
+                    "created_at": event.created_at.astimezone(timezone).isoformat(),
+                }
+                for event in events
             ],
         },
         "generated_at": datetime.now(UTC).isoformat(),

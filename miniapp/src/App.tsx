@@ -8,7 +8,15 @@ import { MarketsPanel } from "./components/panels/MarketsPanel";
 import { MemoryPanel } from "./components/panels/MemoryPanel";
 import { ShoppingPanel } from "./components/panels/ShoppingPanel";
 import { TodayPanel } from "./components/panels/TodayPanel";
-import { loadMiniAppState, postMiniAppMutation, type MiniAppState } from "./domain/api";
+import {
+  loadMiniAppState,
+  miniAppMutationToTelegramPayload,
+  postMiniAppMutation,
+  recordMiniAppEvent,
+  sendTelegramPayload as sendTelegramWebAppPayload,
+  shouldFallbackToTelegram,
+  type MiniAppState,
+} from "./domain/api";
 import type { AssistantState } from "./domain/assistant";
 import { eventBus, type TabId } from "./domain/events";
 import { attachRules } from "./domain/rules";
@@ -28,8 +36,10 @@ export function App() {
     setStateError("");
     try {
       setMiniState(await loadMiniAppState());
+      void recordMiniAppEvent("state_refresh", { result: "ok" });
     } catch (error) {
-      setStateError(error instanceof Error ? error.message : "Mini App API error");
+      setStateError(formatMiniAppError(error));
+      void recordMiniAppEvent("state_refresh", { result: "error" });
     } finally {
       setStateLoading(false);
     }
@@ -38,12 +48,23 @@ export function App() {
   const mutateState = useCallback(async (path: string, body: Record<string, unknown>) => {
     setAssistantState("working");
     setStateError("");
+    void recordMiniAppEvent("mutation_submit", { path });
     try {
       setMiniState(await postMiniAppMutation(path, body));
       setToast("Saved");
+      setAssistantState("happy");
+      void recordMiniAppEvent("mutation_success", { path });
     } catch (error) {
+      const fallbackPayload = miniAppMutationToTelegramPayload(path, body);
+      if (fallbackPayload && shouldFallbackToTelegram(error) && sendTelegramWebAppPayload(fallbackPayload)) {
+        setAssistantState("happy");
+        setToast("Sent to bot");
+        void recordMiniAppEvent("mutation_telegram_fallback", { path, type: fallbackPayload.type });
+        return;
+      }
       setAssistantState("sad");
-      setStateError(error instanceof Error ? error.message : "Mini App API error");
+      setStateError(formatMiniAppError(error));
+      void recordMiniAppEvent("mutation_error", { path });
     }
   }, []);
 
@@ -57,6 +78,9 @@ export function App() {
     if (bg) {
       document.documentElement.style.setProperty("--tg-bg", bg);
     }
+    void recordMiniAppEvent("app_open", {
+      user_id: telegram.initDataUnsafe?.user?.id ?? "",
+    });
   }, [telegram]);
 
   useEffect(() => {
@@ -65,12 +89,14 @@ export function App() {
       showToast: setToast,
       sendTelegramPayload: (payload: TelegramPayload) => {
         const serialized = JSON.stringify(payload);
-        if (telegram) {
-          telegram.sendData(serialized);
+        if (sendTelegramWebAppPayload(payload)) {
           setToast("Отправлено в бот");
           return;
         }
         setToast(`Preview payload: ${serialized}`);
+      },
+      recordEvent: (name, data) => {
+        void recordMiniAppEvent(name, data);
       },
     });
   }, [telegram]);
@@ -149,4 +175,11 @@ export function App() {
       </div>
     </main>
   );
+}
+
+function formatMiniAppError(error: unknown): string {
+  if (shouldFallbackToTelegram(error)) {
+    return "Live API unavailable. Telegram actions still work from inside Mini App.";
+  }
+  return error instanceof Error ? error.message : "Mini App API error";
 }

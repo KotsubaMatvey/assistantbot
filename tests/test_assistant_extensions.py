@@ -192,6 +192,11 @@ def test_mini_app_state_uses_live_local_stores(tmp_path) -> None:
         category="food",
     )
     add_mini_app_task(vault_path=str(tmp_path), user_id=123, text="real mini app task")
+    AuditLogStore(str(tmp_path)).record(
+        user_id=123,
+        action="mini_app_task_create",
+        detail="real mini app task",
+    )
 
     state = build_mini_app_state(
         vault_path=str(tmp_path),
@@ -202,6 +207,7 @@ def test_mini_app_state_uses_live_local_stores(tmp_path) -> None:
     assert state["finance"]["balance"] == "1000.00"
     assert state["finance"]["expenses"] == "250.00"
     assert state["today"]["tasks"][0]["snippet"] == "real mini app task"
+    assert state["memory"]["events"][0]["action"] == "mini_app_task_create"
 
 
 def test_telegram_init_data_validation_extracts_user_id() -> None:
@@ -231,6 +237,24 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     today_payload = parse_mini_app_payload('{"type":"command","command":"today"}')
     basket_payload = parse_mini_app_payload('{"type":"basket_compare","text":"молоко"}')
     assistant_payload = parse_mini_app_payload('{"type":"assistant_message","text":"btc"}')
+    task_payload = parse_mini_app_payload('{"type":"task_create","text":"ship mini app"}')
+    note_payload = parse_mini_app_payload('{"type":"note_create","text":"remember this"}')
+    reminder_payload = parse_mini_app_payload(
+        '{"type":"reminder_create","text":"tomorrow call Ivan"}'
+    )
+    person_payload = parse_mini_app_payload(
+        '{"type":"person_note","name":"Ivan","note":"prefers email"}'
+    )
+    finance_payload = parse_mini_app_payload(
+        '{"type":"finance_transaction","kind":"expense","amount":"100","category":"food","note":"milk"}'
+    )
+    account_payload = parse_mini_app_payload(
+        '{"type":"finance_account","name":"Cash","balance":"1000"}'
+    )
+    subscription_payload = parse_mini_app_payload(
+        '{"type":"finance_subscription","name":"Music","amount":"199"}'
+    )
+    receipt_payload = parse_mini_app_payload('{"type":"receipt_save","text":"store\\nmilk 100"}')
 
     assert "Possible tasks" in summary.body
     assert "Possible decisions" in summary.body
@@ -244,6 +268,8 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert "pixel_assistant" in manifest.features
     assert "lifestyle_context" in manifest.features
     assert "finance" in manifest.features
+    assert "mini_app_event_log" in manifest.features
+    assert "mini_app_telegram_fallback" in manifest.features
     assert "people" in manifest.features
     assert "objects" in manifest.features
     assert "daily_command_center" in manifest.features
@@ -261,6 +287,16 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert today_payload.command == "today"
     assert basket_payload.text == "молоко"
     assert assistant_payload.text == "btc"
+    assert task_payload.text == "ship mini app"
+    assert note_payload.text == "remember this"
+    assert reminder_payload.text == "tomorrow call Ivan"
+    assert person_payload.data["name"] == "Ivan"
+    assert person_payload.data["note"] == "prefers email"
+    assert finance_payload.data["kind"] == "expense"
+    assert finance_payload.data["amount"] == "100"
+    assert account_payload.data["name"] == "Cash"
+    assert subscription_payload.data["amount"] == "199"
+    assert receipt_payload.text == "store\nmilk 100"
 
 
 def test_mini_app_payload_rejects_oversized_text() -> None:
@@ -274,6 +310,12 @@ def test_mini_app_payload_rejects_oversized_text() -> None:
     with pytest.raises(ValueError, match="assistant message is too large"):
         parse_mini_app_payload(
             '{"type":"assistant_message","text":"' + long_assistant + '"}'
+        )
+    with pytest.raises(ValueError, match="text is empty"):
+        parse_mini_app_payload('{"type":"task_create","text":" "}')
+    with pytest.raises(ValueError, match="transaction kind"):
+        parse_mini_app_payload(
+            '{"type":"finance_transaction","kind":"transfer","amount":"1","category":"x"}'
         )
 
 

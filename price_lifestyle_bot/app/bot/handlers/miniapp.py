@@ -49,6 +49,16 @@ from app.config import get_settings
 from app.logging_config import get_logger
 from app.services.audit_log import AuditLogStore
 from app.services.mini_app import parse_mini_app_payload
+from app.services.mini_app_state import (
+    add_mini_app_note,
+    add_mini_app_person,
+    add_mini_app_receipt,
+    add_mini_app_reminder,
+    add_mini_app_task,
+    add_mini_app_transaction,
+    update_mini_app_account,
+    update_mini_app_subscription,
+)
 
 router = Router()
 logger = get_logger(__name__)
@@ -57,6 +67,8 @@ logger = get_logger(__name__)
 @router.message(F.web_app_data)
 async def mini_app_data_handler(message: Message) -> None:
     raw_data = message.web_app_data.data if message.web_app_data else ""
+    settings = get_settings()
+    user_id = message.from_user.id if message.from_user else 0
     try:
         payload = parse_mini_app_payload(raw_data)
     except ValueError as exc:
@@ -79,6 +91,119 @@ async def mini_app_data_handler(message: Message) -> None:
             f"chars={len(payload.text)}",
         )
         await message.answer(_pixel_assistant_reply(payload.text))
+        return
+    if payload.type == "task_create":
+        add_mini_app_task(
+            vault_path=settings.obsidian_vault_path,
+            user_id=user_id,
+            text=payload.text,
+        )
+        _audit_mini_app(message, "mini_app_task_create", payload.text)
+        await message.answer("Task saved from Mini App.")
+        return
+    if payload.type == "note_create":
+        add_mini_app_note(
+            vault_path=settings.obsidian_vault_path,
+            user_id=user_id,
+            text=payload.text,
+        )
+        _audit_mini_app(message, "mini_app_note_create", payload.text)
+        await message.answer("Note saved from Mini App.")
+        return
+    if payload.type == "reminder_create":
+        try:
+            add_mini_app_reminder(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                text=payload.text,
+                timezone_name=settings.timezone,
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_reminder_rejected", str(exc))
+            await message.answer(f"Reminder rejected: {exc}")
+            return
+        _audit_mini_app(message, "mini_app_reminder_create", payload.text)
+        await message.answer("Reminder saved from Mini App.")
+        return
+    if payload.type == "person_note":
+        try:
+            add_mini_app_person(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                name=payload.data["name"],
+                note=payload.data["note"],
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_person_rejected", str(exc))
+            await message.answer(f"Person note rejected: {exc}")
+            return
+        _audit_mini_app(message, "mini_app_person_note", payload.data["name"])
+        await message.answer("Person note saved from Mini App.")
+        return
+    if payload.type == "finance_transaction":
+        try:
+            add_mini_app_transaction(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                kind=payload.data["kind"],
+                amount=payload.data["amount"],
+                category=payload.data["category"],
+                note=payload.data.get("note", ""),
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_finance_rejected", str(exc))
+            await message.answer(f"Finance transaction rejected: {exc}")
+            return
+        _audit_mini_app(
+            message,
+            "mini_app_finance_transaction",
+            f"{payload.data['kind']} {payload.data['amount']} {payload.data['category']}",
+        )
+        await message.answer("Finance transaction saved from Mini App.")
+        return
+    if payload.type == "finance_account":
+        try:
+            update_mini_app_account(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                name=payload.data["name"],
+                balance=payload.data["balance"],
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_account_rejected", str(exc))
+            await message.answer(f"Account rejected: {exc}")
+            return
+        _audit_mini_app(message, "mini_app_account_update", payload.data["name"])
+        await message.answer("Account saved from Mini App.")
+        return
+    if payload.type == "finance_subscription":
+        try:
+            update_mini_app_subscription(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                name=payload.data["name"],
+                amount=payload.data["amount"],
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_subscription_rejected", str(exc))
+            await message.answer(f"Subscription rejected: {exc}")
+            return
+        _audit_mini_app(message, "mini_app_subscription_update", payload.data["name"])
+        await message.answer("Subscription saved from Mini App.")
+        return
+    if payload.type == "receipt_save":
+        try:
+            add_mini_app_receipt(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                text=payload.text,
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_receipt_rejected", str(exc))
+            await message.answer(f"Receipt rejected: {exc}")
+            return
+        _audit_mini_app(message, "mini_app_receipt_save", f"chars={len(payload.text)}")
+        await message.answer("Receipt saved from Mini App.")
         return
 
     _audit_mini_app(message, "mini_app_command", payload.command)
