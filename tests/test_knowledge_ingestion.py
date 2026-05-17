@@ -7,9 +7,11 @@ import httpx
 import pytest
 from app.services.knowledge_ingestion import (
     add_rss_subscription,
+    compact_memory_text,
     extract_page_summary,
     format_feed_digests,
     parse_feed_entries,
+    prepare_memory_content,
     validate_public_url,
 )
 
@@ -28,6 +30,30 @@ def test_extract_page_summary_removes_scripts_and_keeps_title() -> None:
     assert page.title == "Test page"
     assert "Useful text" in page.summary
     assert "secret" not in page.summary
+
+
+def test_compact_memory_text_deduplicates_lines_and_truncates() -> None:
+    text = "Alpha signal\nAlpha signal\nBeta signal needs follow up and sizing"
+
+    compacted = compact_memory_text(text, max_chars=30)
+
+    assert compacted == "Alpha signal Beta signal needs..."
+
+
+def test_prepare_memory_content_extracts_summary_chunks_tags_and_checksum() -> None:
+    prepared = prepare_memory_content(
+        "BTC market signal. " * 80,
+        title="Market memo",
+        source_url="https://example.com/memo",
+        max_summary_chars=80,
+        chunk_chars=120,
+    )
+
+    assert prepared.title == "Market memo"
+    assert len(prepared.summary) <= 83
+    assert len(prepared.chunks) > 1
+    assert "market" in prepared.tags
+    assert prepared.checksum
 
 
 def test_parse_rss_entries() -> None:

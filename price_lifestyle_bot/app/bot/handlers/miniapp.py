@@ -4,29 +4,45 @@ from aiogram import F, Router
 from aiogram.types import Message
 
 from app.bot.handlers.lifestyle import (
+    accounts_handler,
     assistants_handler,
     budget_handler,
     budget_plan_handler,
+    cashflow_handler,
     check_alerts_handler,
+    evening_handler,
+    expense_handler,
+    income_handler,
     morning_handler,
     pantry_deals_handler,
     pantry_handler,
     pantry_plan_handler,
     price_alerts_handler,
+    subscriptions_handler,
+    week_handler,
 )
-from app.bot.handlers.markets import markets_command
+from app.bot.handlers.markets import market_brief_command, markets_command
 from app.bot.handlers.memory import (
     agenda_handler,
     assistant_capabilities_handler,
+    capability_center_handler,
     compact_handler,
     lifestyle_context_handler,
+    memory_profile_handler,
+    memory_tree_handler,
     new_session_handler,
+    objects_handler,
+    people_handler,
     recent_handler,
     skills_handler,
+    source_list_handler,
+    source_sync_handler,
     sources_handler,
     status_handler,
     tasks_handler,
     today_handler,
+    tools_handler,
+    weekly_summary_handler,
 )
 from app.bot.handlers.shopping import _handle_basket
 from app.config import get_settings
@@ -68,8 +84,12 @@ async def mini_app_data_handler(message: Message) -> None:
     _audit_mini_app(message, "mini_app_command", payload.command)
     if payload.command == "markets":
         await markets_command(message)
+    elif payload.command == "market_brief":
+        await market_brief_command(message)
     elif payload.command == "status":
         await status_handler(message)
+    elif payload.command == "capability_center":
+        await capability_center_handler(message)
     elif payload.command == "agenda":
         await agenda_handler(message)
     elif payload.command == "lifestyle_context":
@@ -80,6 +100,10 @@ async def mini_app_data_handler(message: Message) -> None:
         await new_session_handler(message)
     elif payload.command == "morning":
         await morning_handler(message)
+    elif payload.command == "evening":
+        await evening_handler(message)
+    elif payload.command == "week":
+        await week_handler(message)
     elif payload.command == "price_alerts":
         await price_alerts_handler(message)
     elif payload.command == "check_alerts":
@@ -94,16 +118,42 @@ async def mini_app_data_handler(message: Message) -> None:
         await budget_handler(message)
     elif payload.command == "budget_plan":
         await budget_plan_handler(message)
+    elif payload.command == "expense":
+        await expense_handler(message)
+    elif payload.command == "income":
+        await income_handler(message)
+    elif payload.command == "accounts":
+        await accounts_handler(message)
+    elif payload.command == "subscriptions":
+        await subscriptions_handler(message)
+    elif payload.command == "cashflow":
+        await cashflow_handler(message)
     elif payload.command == "assistants":
         await assistants_handler(message)
     elif payload.command == "today":
         await today_handler(message)
     elif payload.command == "tasks":
         await tasks_handler(message)
+    elif payload.command == "people":
+        await people_handler(message)
+    elif payload.command == "objects":
+        await objects_handler(message)
     elif payload.command == "recent":
         await recent_handler(message)
     elif payload.command == "sources":
         await sources_handler(message)
+    elif payload.command == "source_list":
+        await source_list_handler(message)
+    elif payload.command == "source_sync":
+        await source_sync_handler(message)
+    elif payload.command == "memory_tree":
+        await memory_tree_handler(message)
+    elif payload.command == "memory_profile":
+        await memory_profile_handler(message)
+    elif payload.command == "weekly_summary":
+        await weekly_summary_handler(message)
+    elif payload.command == "tools":
+        await tools_handler(message)
     elif payload.command == "skills":
         await skills_handler(message)
     elif payload.command == "assistant_capabilities":
@@ -127,12 +177,12 @@ def _pixel_assistant_reply(text: str) -> str:
     if "цен" in normalized or "покуп" in normalized:
         return "Pixel helper: для покупок используй /prices, /watch_price и /pantry_plan."
     if "рын" in normalized or "btc" in normalized:
-        return "Pixel helper: для рынка используй /markets или /morning."
+        return "Pixel helper: для рынка используй /markets, /market_brief или /morning."
     if "зада" in normalized or "план" in normalized:
         return "Pixel helper: для задач используй /agenda, /task и /compact."
     if "пам" in normalized or "контекст" in normalized:
         return "Pixel helper: для контекста используй /lifestyle_context или /memory."
     return (
-        "Pixel helper: могу открыть /morning, /agenda, /markets, "
+        "Pixel helper: могу открыть /morning, /agenda, /markets, /market_brief, "
         "/pantry, /budget или /lifestyle_context."
     )

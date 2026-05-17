@@ -7,7 +7,9 @@ from aiogram.types import Message
 from app.config import get_settings
 from app.services.market_watch import (
     fetch_market_watch,
+    format_market_brief,
     format_market_watch,
+    market_brief_memory_note,
     market_watch_memory_note,
 )
 from app.services.obsidian_memory import ObsidianMemory
@@ -26,3 +28,16 @@ async def markets_command(message: Message) -> None:
             extra_tags=["market", "prices"],
         )
     await message.answer(format_market_watch(result))
+
+
+@router.message(Command("market_brief"))
+async def market_brief_command(message: Message) -> None:
+    result = await fetch_market_watch()
+    if message.from_user is not None:
+        ObsidianMemory(get_settings().obsidian_vault_path).remember_user_note(
+            user_id=message.from_user.id,
+            text=market_brief_memory_note(result),
+            note_type="market",
+            extra_tags=["market", "brief", "signals"],
+        )
+    await message.answer(format_market_brief(result))

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 import pytest
 from app.services.agenda import build_agenda
 from app.services.assistant_jobs import AssistantJobStore, parse_job_request
-from app.services.assistant_tools import run_tool
+from app.services.assistant_tools import ToolUsageStore, format_tool_registry, list_tools, run_tool
 from app.services.audit_log import AuditLogStore
 from app.services.conversation_summary import summarize_conversation
 from app.services.memory_transfer import export_user_memory, import_user_memory
@@ -15,6 +19,14 @@ from app.services.mini_app import (
     mini_app_manifest,
     parse_mini_app_payload,
 )
+from app.services.mini_app_server import validate_telegram_init_data
+from app.services.mini_app_state import (
+    add_mini_app_task,
+    add_mini_app_transaction,
+    build_mini_app_state,
+    update_mini_app_account,
+)
+from app.services.object_store import ObjectStore
 from app.services.obsidian_memory import ObsidianMemory
 from app.services.secret_scanner import scan_for_secrets
 from app.services.source_trust import build_source_trust
@@ -102,6 +114,17 @@ def test_job_delivery_mode_parser_and_tools(tmp_path) -> None:
     assert morning_mode == "morning"
 
 
+def test_tool_registry_tracks_usage_metadata(tmp_path) -> None:
+    store = ToolUsageStore(str(tmp_path))
+    store.record_success("calc")
+
+    text = format_tool_registry(list_tools(), store.list_usage())
+
+    assert "Tools registry:" in text
+    assert "calc [assistant, risk:low" in text
+    assert "last_used:" in text
+
+
 def test_filtered_search_inbox_tags_source_trust_and_agenda(tmp_path) -> None:
     memory = ObsidianMemory(str(tmp_path))
     memory.remember_user_note(user_id=123, text="alpha plain note")
@@ -126,12 +149,82 @@ def test_filtered_search_inbox_tags_source_trust_and_agenda(tmp_path) -> None:
     )
 
 
+def test_object_store_indexes_memory_and_receipts(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    memory.remember_person_note(user_id=123, person_name="Ivan", text="likes email updates")
+    memory.create_task(user_id=123, text="ship object system")
+    memory.remember_user_note(
+        user_id=123,
+        text="Source note",
+        source_type="web",
+        source_url="https://example.com/source",
+    )
+    store = ObjectStore(str(tmp_path))
+    store.index_receipt(
+        user_id=123,
+        receipt_id="r1",
+        store="Magnit",
+        total="120",
+        items=[("milk 2.5", "120", "dairy")],
+        purchased_at=datetime(2026, 5, 8, 9, 0, tzinfo=UTC),
+    )
+
+    stats = store.stats(user_id=123)
+    object_types = {object_type for object_type, _ in stats.by_type}
+
+    assert {"person", "task", "source", "receipt", "product"} <= object_types
+    assert store.list_objects(user_id=123, object_type="person")[0].title == "Person: Ivan"
+    assert store.list_objects(user_id=123, object_type="product")[0].title == "milk 2.5"
+
+
+def test_mini_app_state_uses_live_local_stores(tmp_path) -> None:
+    update_mini_app_account(
+        vault_path=str(tmp_path),
+        user_id=123,
+        name="Cash",
+        balance="1000",
+    )
+    add_mini_app_transaction(
+        vault_path=str(tmp_path),
+        user_id=123,
+        kind="expense",
+        amount="250",
+        category="food",
+    )
+    add_mini_app_task(vault_path=str(tmp_path), user_id=123, text="real mini app task")
+
+    state = build_mini_app_state(
+        vault_path=str(tmp_path),
+        user_id=123,
+        timezone_name="Europe/Moscow",
+    )
+
+    assert state["finance"]["balance"] == "1000.00"
+    assert state["finance"]["expenses"] == "250.00"
+    assert state["today"]["tasks"][0]["snippet"] == "real mini app task"
+
+
+def test_telegram_init_data_validation_extracts_user_id() -> None:
+    init_data = _signed_init_data(bot_token="123:token", user_id=987)
+
+    assert validate_telegram_init_data(init_data, bot_token="123:token") == 987
+
+
 def test_conversation_summary_and_mini_app_manifest() -> None:
     summary = summarize_conversation(["надо написать план", "решили выбрать вариант A"])
     manifest = mini_app_manifest("https://example.com/app")
     command_payload = parse_mini_app_payload('{"type":"command","command":"markets"}')
+    brief_payload = parse_mini_app_payload('{"type":"command","command":"market_brief"}')
+    center_payload = parse_mini_app_payload(
+        '{"type":"command","command":"capability_center"}'
+    )
+    tree_payload = parse_mini_app_payload('{"type":"command","command":"memory_tree"}')
+    source_payload = parse_mini_app_payload('{"type":"command","command":"source_list"}')
     pantry_payload = parse_mini_app_payload('{"type":"command","command":"pantry_deals"}')
     budget_payload = parse_mini_app_payload('{"type":"command","command":"budget_plan"}')
+    cashflow_payload = parse_mini_app_payload('{"type":"command","command":"cashflow"}')
+    people_payload = parse_mini_app_payload('{"type":"command","command":"people"}')
+    evening_payload = parse_mini_app_payload('{"type":"command","command":"evening"}')
     context_payload = parse_mini_app_payload(
         '{"type":"command","command":"lifestyle_context"}'
     )
@@ -144,11 +237,26 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert manifest.enabled is True
     assert "tasks" in manifest.features
     assert "market_watch" in manifest.features
+    assert "market_brief" in manifest.features
+    assert "capability_center" in manifest.features
+    assert "memory_tree" in manifest.features
+    assert "connected_sources" in manifest.features
     assert "pixel_assistant" in manifest.features
     assert "lifestyle_context" in manifest.features
+    assert "finance" in manifest.features
+    assert "people" in manifest.features
+    assert "objects" in manifest.features
+    assert "daily_command_center" in manifest.features
     assert command_payload.command == "markets"
+    assert brief_payload.command == "market_brief"
+    assert center_payload.command == "capability_center"
+    assert tree_payload.command == "memory_tree"
+    assert source_payload.command == "source_list"
     assert pantry_payload.command == "pantry_deals"
     assert budget_payload.command == "budget_plan"
+    assert cashflow_payload.command == "cashflow"
+    assert people_payload.command == "people"
+    assert evening_payload.command == "evening"
     assert context_payload.command == "lifestyle_context"
     assert today_payload.command == "today"
     assert basket_payload.text == "молоко"
@@ -167,3 +275,19 @@ def test_mini_app_payload_rejects_oversized_text() -> None:
         parse_mini_app_payload(
             '{"type":"assistant_message","text":"' + long_assistant + '"}'
         )
+
+
+def _signed_init_data(*, bot_token: str, user_id: int) -> str:
+    pairs = {
+        "auth_date": "1710000000",
+        "query_id": "q",
+        "user": json.dumps({"id": user_id}, separators=(",", ":")),
+    }
+    data_check_string = "\n".join(f"{key}={pairs[key]}" for key in sorted(pairs))
+    secret = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+    pairs["hash"] = hmac.new(
+        secret,
+        data_check_string.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return urlencode(pairs)

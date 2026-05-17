@@ -31,7 +31,7 @@ PERSONAS: tuple[AssistantPersona, ...] = (
         name="market_analyst",
         title="Market Analyst",
         description="BTC, BTC.D, индексы и утренние market briefs",
-        commands=["markets", "morning", "automation_enable"],
+        commands=["markets", "market_brief", "morning", "automation_enable"],
         pixel_mood="sharp",
     ),
 )

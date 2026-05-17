@@ -25,8 +25,19 @@ from app.services.automation import (
 from app.services.basket_parser import parse_basket
 from app.services.daily_brief import DailyBrief, format_daily_brief
 from app.services.family import FamilyStore, format_family
+from app.services.finance import (
+    FinanceStore,
+    format_accounts,
+    format_cashflow,
+    format_subscriptions,
+    format_transaction,
+    parse_named_amount,
+    parse_transaction_request,
+)
 from app.services.live_price_refresh import refresh_prices_for_items
-from app.services.market_watch import fetch_market_watch, format_market_watch
+from app.services.market_watch import fetch_market_watch, format_market_brief
+from app.services.memory_tree import MemoryTreeStore
+from app.services.object_store import ObjectStore
 from app.services.obsidian_memory import ObsidianMemory
 from app.services.pantry import (
     PantryStore,
@@ -211,6 +222,14 @@ async def receipt_handler(message: Message) -> None:
     except ValueError as exc:
         await message.answer(str(exc))
         return
+    ObjectStore(get_settings().obsidian_vault_path).index_receipt(
+        user_id=message.from_user.id,
+        receipt_id=receipt.id,
+        store=receipt.store,
+        total=str(receipt.total),
+        items=[(item.name, str(item.price), item.category) for item in receipt.items],
+        purchased_at=receipt.purchased_at,
+    )
     await message.answer(format_receipt(receipt))
 
 
@@ -268,11 +287,118 @@ async def budget_plan_handler(message: Message) -> None:
     await message.answer(format_plan_vs_actual(report))
 
 
+@router.message(Command("expense"))
+async def expense_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    text = (message.text or "").partition(" ")[2].strip()
+    try:
+        amount, category, note = parse_transaction_request(text)
+        transaction = FinanceStore(get_settings().obsidian_vault_path).add_transaction(
+            user_id=message.from_user.id,
+            kind="expense",
+            amount=amount,
+            category=category,
+            note=note,
+        )
+    except ValueError as exc:
+        await message.answer(f"Usage: /expense <amount> <category> [note]\n{exc}")
+        return
+    await message.answer(format_transaction(transaction))
+
+
+@router.message(Command("income"))
+async def income_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    text = (message.text or "").partition(" ")[2].strip()
+    try:
+        amount, category, note = parse_transaction_request(text)
+        transaction = FinanceStore(get_settings().obsidian_vault_path).add_transaction(
+            user_id=message.from_user.id,
+            kind="income",
+            amount=amount,
+            category=category,
+            note=note,
+        )
+    except ValueError as exc:
+        await message.answer(f"Usage: /income <amount> <source> [note]\n{exc}")
+        return
+    await message.answer(format_transaction(transaction))
+
+
+@router.message(Command("accounts"))
+async def accounts_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    settings = get_settings()
+    store = FinanceStore(settings.obsidian_vault_path)
+    text = (message.text or "").partition(" ")[2].strip()
+    if text:
+        try:
+            name, amount = parse_named_amount(text)
+            store.upsert_account(user_id=message.from_user.id, name=name, balance=amount)
+        except ValueError as exc:
+            await message.answer(f"Usage: /accounts <name> <amount>\n{exc}")
+            return
+    await message.answer(format_accounts(store.list_accounts(user_id=message.from_user.id)))
+
+
+@router.message(Command("subscriptions"))
+async def subscriptions_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    settings = get_settings()
+    store = FinanceStore(settings.obsidian_vault_path)
+    text = (message.text or "").partition(" ")[2].strip()
+    if text:
+        try:
+            name, amount = parse_named_amount(text)
+            store.upsert_subscription(user_id=message.from_user.id, name=name, amount=amount)
+        except ValueError as exc:
+            await message.answer(f"Usage: /subscriptions <name> <amount>\n{exc}")
+            return
+    subscriptions = store.list_subscriptions(user_id=message.from_user.id)
+    await message.answer(format_subscriptions(subscriptions))
+
+
+@router.message(Command("cashflow"))
+async def cashflow_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    settings = get_settings()
+    month = (message.text or "").partition(" ")[2].strip() or current_month()
+    receipt_spend = SpendingStore(settings.obsidian_vault_path).budget_summary(
+        user_id=message.from_user.id,
+        month=month,
+    ).spent
+    summary = FinanceStore(settings.obsidian_vault_path).cashflow_summary(
+        user_id=message.from_user.id,
+        month=month,
+        receipt_expenses=receipt_spend,
+    )
+    await message.answer(format_cashflow(summary))
+
+
 @router.message(Command("morning"))
 async def morning_handler(message: Message) -> None:
     if message.from_user is None:
         return
     await message.answer(await _morning_report(message))
+
+
+@router.message(Command("evening"))
+async def evening_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    await message.answer(_evening_report(message))
+
+
+@router.message(Command("week"))
+async def week_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    await message.answer(_week_report(message))
 
 
 @router.message(Command("family"))
@@ -530,7 +656,7 @@ async def _morning_report(message: Message) -> str:
     settings = get_settings()
     user_id = message.from_user.id
     memory = ObsidianMemory(settings.obsidian_vault_path)
-    markets = format_market_watch(await fetch_market_watch())
+    markets = format_market_brief(await fetch_market_watch())
     agenda = build_agenda(
         memory=memory,
         jobs=AssistantJobStore(settings.obsidian_vault_path, timezone_name=settings.timezone),
@@ -553,3 +679,63 @@ async def _morning_report(message: Message) -> str:
             notes=memory.lifestyle_focus_notes(user_id=user_id),
         )
     )[:3900]
+
+
+def _evening_report(message: Message) -> str:
+    if message.from_user is None:
+        return ""
+    settings = get_settings()
+    user_id = message.from_user.id
+    memory = ObsidianMemory(settings.obsidian_vault_path)
+    tasks = memory.list_open_tasks(user_id=user_id, limit=5)
+    reminders = memory.list_reminders(user_id=user_id, limit=5)
+    budget = SpendingStore(settings.obsidian_vault_path).budget_summary(user_id=user_id)
+    lines = [
+        "Evening review",
+        "",
+        "## Today",
+        memory.today_digest(user_id=user_id)[:900],
+        "",
+        "## Open tasks",
+    ]
+    if tasks:
+        lines.extend(f"- {task.snippet} ({task.id})" for task in tasks)
+    else:
+        lines.append("- none")
+    lines.append("")
+    lines.append("## Reminders")
+    if reminders:
+        timezone = ZoneInfo(settings.timezone)
+        lines.extend(
+            f"- {reminder.due_at.astimezone(timezone):%Y-%m-%d %H:%M}: {reminder.snippet}"
+            for reminder in reminders
+        )
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Budget", format_budget_summary(budget)])
+    return "\n".join(lines)[:3900]
+
+
+def _week_report(message: Message) -> str:
+    if message.from_user is None:
+        return ""
+    settings = get_settings()
+    user_id = message.from_user.id
+    memory = ObsidianMemory(settings.obsidian_vault_path)
+    tree = MemoryTreeStore(settings.obsidian_vault_path)
+    budget = SpendingStore(settings.obsidian_vault_path).budget_summary(user_id=user_id)
+    tasks = memory.list_open_tasks(user_id=user_id, limit=8)
+    lines = [
+        "Week plan",
+        "",
+        "## Memory",
+        tree.weekly_summary(user_id=user_id, memory=memory)[:1200],
+        "",
+        "## Tasks",
+    ]
+    if tasks:
+        lines.extend(f"- {task.snippet} ({task.id})" for task in tasks)
+    else:
+        lines.append("- none")
+    lines.extend(["", "## Budget", format_budget_summary(budget)])
+    return "\n".join(lines)[:3900]

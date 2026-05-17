@@ -11,6 +11,7 @@ from app.services.automation import enable_automation, list_automation_templates
 from app.services.basket_parser import parse_basket
 from app.services.daily_brief import DailyBrief, format_daily_brief
 from app.services.family import FamilyStore
+from app.services.finance import FinanceStore
 from app.services.pantry import PantryStore, parse_pantry_item
 from app.services.price_alerts import (
     CONDITION_BELOW_AVERAGE,
@@ -81,6 +82,38 @@ def test_spending_plan_vs_actual(tmp_path) -> None:
     assert report.matched[0].name == "молоко"
     assert report.missing == ["хлеб"]
     assert report.unplanned[0].name == "кофе"
+
+
+def test_finance_store_cashflow_accounts_and_subscriptions(tmp_path) -> None:
+    store = FinanceStore(str(tmp_path))
+    store.upsert_account(user_id=123, name="Cash", balance=Decimal("10000"))
+    store.upsert_subscription(user_id=123, name="Music", amount=Decimal("299"))
+    store.add_transaction(
+        user_id=123,
+        kind="income",
+        amount=Decimal("5000"),
+        category="salary",
+        created_at=datetime(2026, 5, 8, 9, 0, tzinfo=UTC),
+    )
+    store.add_transaction(
+        user_id=123,
+        kind="expense",
+        amount=Decimal("1000"),
+        category="food",
+        created_at=datetime(2026, 5, 9, 9, 0, tzinfo=UTC),
+    )
+
+    summary = store.cashflow_summary(
+        user_id=123,
+        month="2026-05",
+        receipt_expenses=Decimal("500"),
+    )
+
+    assert store.list_accounts(user_id=123)[0].balance == Decimal("10000")
+    assert store.list_subscriptions(user_id=123)[0].amount == Decimal("299")
+    assert summary.income == Decimal("5000")
+    assert summary.expenses == Decimal("1000")
+    assert summary.forecast == Decimal("13201")
 
 
 def test_price_alerts_evaluate_current_offers(tmp_path) -> None:

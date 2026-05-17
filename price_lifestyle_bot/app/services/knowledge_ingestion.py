@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import re
 import socket
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -37,6 +38,22 @@ class FeedDigest:
     error_message: str | None = None
 
 
+@dataclass(frozen=True)
+class ContentChunk:
+    index: int
+    text: str
+
+
+@dataclass(frozen=True)
+class PreparedMemoryContent:
+    title: str
+    summary: str
+    chunks: list[ContentChunk]
+    tags: list[str] = field(default_factory=list)
+    checksum: str = ""
+    source_url: str | None = None
+
+
 def validate_public_url(url: str) -> str:
     clean_url = url.strip()
     parsed = urlparse(clean_url)
@@ -61,17 +78,76 @@ def extract_page_summary(html: str, url: str, *, max_chars: int = 1200) -> PageS
         tag.decompose()
     title = soup.title.get_text(" ", strip=True) if soup.title else url
     body = soup.body or soup
-    text = " ".join(body.get_text(" ", strip=True).split())
-    return PageSummary(url=url, title=title[:200], summary=text[:max_chars])
+    text = compact_memory_text(body.get_text("\n", strip=True), max_chars=max_chars)
+    return PageSummary(url=url, title=title[:200], summary=text)
+
+
+def compact_memory_text(text: str, *, max_chars: int) -> str:
+    lines = [_clean_text(line) for line in text.splitlines()]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if not line:
+            continue
+        key = line.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(line)
+
+    compacted = " ".join(deduped) if deduped else _clean_text(text)
+    if len(compacted) <= max_chars:
+        return compacted
+    sentence_cut = compacted.rfind(". ", 0, max_chars)
+    if sentence_cut < int(max_chars * 0.6):
+        sentence_cut = max_chars
+    return compacted[:sentence_cut].rstrip(" ,.;:-") + "..."
+
+
+def prepare_memory_content(
+    text: str,
+    *,
+    title: str = "",
+    source_url: str | None = None,
+    max_summary_chars: int = 1200,
+    chunk_chars: int = 1200,
+) -> PreparedMemoryContent:
+    clean_text = compact_memory_text(text, max_chars=max(len(text), max_summary_chars))
+    clean_title = compact_memory_text(title or _title_from_text(clean_text), max_chars=200)
+    summary = compact_memory_text(clean_text, max_chars=max_summary_chars)
+    chunks = [
+        ContentChunk(index=index, text=chunk)
+        for index, chunk in enumerate(_chunk_text(clean_text, chunk_chars=chunk_chars), start=1)
+    ]
+    tags = _content_tags(" ".join([clean_title, summary]))
+    checksum = hashlib.sha256(f"{source_url or ''}\n{clean_text}".encode()).hexdigest()
+    return PreparedMemoryContent(
+        title=clean_title,
+        summary=summary,
+        chunks=chunks,
+        tags=tags,
+        checksum=checksum,
+        source_url=source_url,
+    )
 
 
 def format_learned_page_note(page: PageSummary) -> str:
+    prepared = prepare_memory_content(
+        page.summary,
+        title=page.title,
+        source_url=page.url,
+    )
     return "\n".join(
         [
             f"Источник: {page.url}",
-            f"Заголовок: {page.title}",
+            f"Заголовок: {prepared.title}",
+            f"Checksum: {prepared.checksum}",
             "",
-            page.summary,
+            "Summary:",
+            prepared.summary,
+            "",
+            "Chunks:",
+            *[f"- chunk {chunk.index}: {chunk.text}" for chunk in prepared.chunks[:5]],
         ]
     )
 
@@ -163,7 +239,7 @@ def _entry_from_element(element: ET.Element) -> FeedEntry:
     return FeedEntry(
         title=_clean_text(title)[:200],
         link=link.strip(),
-        summary=_clean_text(summary)[:500],
+        summary=compact_memory_text(summary, max_chars=500),
         published=published,
     )
 
@@ -188,6 +264,48 @@ def _local_name(tag: str) -> str:
 
 def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", BeautifulSoup(text, "html.parser").get_text(" ", strip=True))
+
+
+def _chunk_text(text: str, *, chunk_chars: int) -> list[str]:
+    clean = " ".join(text.split())
+    if not clean:
+        return []
+    chunks = []
+    while clean:
+        if len(clean) <= chunk_chars:
+            chunks.append(clean)
+            break
+        cut = clean.rfind(". ", 0, chunk_chars)
+        if cut < int(chunk_chars * 0.6):
+            cut = clean.rfind(" ", 0, chunk_chars)
+        if cut < int(chunk_chars * 0.4):
+            cut = chunk_chars
+        chunks.append(clean[:cut].strip())
+        clean = clean[cut:].strip()
+    return chunks
+
+
+def _title_from_text(text: str) -> str:
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if first_line:
+        return first_line[:200]
+    words = text.split()
+    return " ".join(words[:12]) if words else "Untitled"
+
+
+def _content_tags(text: str) -> list[str]:
+    normalized = text.lower()
+    tags = ["source"]
+    tag_markers = {
+        "market": ("market", "btc", "stocks", "акции", "рынок"),
+        "github": ("github", "repo", "pull request", "commit"),
+        "budget": ("budget", "expense", "бюджет", "траты"),
+        "task": ("todo", "task", "задача", "нужно", "надо"),
+    }
+    for tag, markers in tag_markers.items():
+        if any(marker in normalized for marker in markers):
+            tags.append(tag)
+    return list(dict.fromkeys(tags))
 
 
 def _validate_public_host(hostname: str) -> None:

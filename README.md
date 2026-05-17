@@ -40,9 +40,12 @@ Second brain memory:
 - `/capture <text>` and `/remember <text>` for explicit capture;
 - `/memory <query>`, `/ask <question>`, `/context <topic>` for retrieval;
 - `/today`, `/recent`, `/collections`, `/collection`, `/sources`;
+- `/memory_tree`, `/memory_rebuild_tree`, `/memory_profile`,
+  `/weekly_summary`, `/project_summary <project>`;
+- `/source_add`, `/source_list`, `/source_sync`, `/source_delete`;
 - spaces, pins, people notes, decisions and reminders;
 - local Markdown storage under `OBSIDIAN_VAULT_PATH`;
-- local SQLite/FTS indexing for memory search.
+- local SQLite/FTS indexing plus free semantic-lite memory search.
 
 Operator controls:
 
@@ -67,30 +70,32 @@ Secondary skills:
 - home and pantry: `/pantry`, `/pantry_add`, `/pantry_plan`, `/pantry_deals`;
 - budget and receipts: `/receipt`, `/budget`, `/budget_set`, `/budget_plan`;
 - family list: `/family_create`, `/family_join`, `/family_add`;
-- markets: `/markets`;
+- markets: `/markets`, `/market_brief`;
 - shopping and prices: `/prices`, `/last`, `/watch_price`, `/price_alerts`.
 
 ## Telegram Mini App
 
 The Mini App lives in `miniapp/` and is a Vite + React + TypeScript frontend.
-It is now assistant-first:
+It is backed by a local API:
 
-- default tab: `Ассистент`;
-- primary actions: `Status`, `Compact`, `New`, `Agenda`, `Today`, `Tasks`,
-  `Recent`, `Sources`, `Skills`, `Morning`, `Assistants`;
-- memory tab for second brain timeline;
-- shopping and markets remain available as secondary tabs.
+- default tab: `Сегодня`;
+- Today tab reads real agenda, tasks, reminders, notes and focus items;
+- Finance tab reads and writes local accounts, expenses, income,
+  subscriptions, receipts and cashflow;
+- Memory tab reads real memory health, objects and unified sources;
+- Markets tab refreshes market data through the backend API;
+- Shopping tab still sends basket comparison payloads to the bot.
 
-Mini App sends safe payloads through `Telegram.WebApp.sendData`. The backend
-accepts command routing, assistant helper messages and explicit basket comparison
-payloads. It does not execute arbitrary user-provided tools from Mini App.
+Mini App API requests verify Telegram `initData`. In local development, `ENV=local`
+also allows a dev `user_id` query/header for preview.
 
 Local Mini App development:
 
 ```bash
+python -m app.scripts.serve_mini_app_api
 cd miniapp
 npm install
-npm run dev
+VITE_MINI_APP_API_BASE_URL=http://127.0.0.1:8080 VITE_MINI_APP_DEV_USER_ID=123 npm run dev
 ```
 
 Production build:
@@ -324,14 +329,14 @@ Backend:
 Mini App:
 
 1. Build `miniapp/`.
-2. Deploy static output to Vercel.
-3. Set `TG_MINI_APP_URL` to the HTTPS deployment URL.
-4. Restart bot so `set_chat_menu_button` points Telegram to the current URL.
-5. Verify with `Bot.get_chat_menu_button()`.
+2. Serve `miniapp/dist` from the bot API or mount it in Docker.
+3. Put HTTPS in front of `MINI_APP_API_PORT`.
+4. Set `TG_MINI_APP_URL` to that HTTPS URL.
+5. Restart bot so `set_chat_menu_button` points Telegram to the current URL.
+6. Verify with `Bot.get_chat_menu_button()`.
 
 ## Roadmap
 
-- live Mini App state backed by backend API and Telegram initData verification;
 - faster response pipeline for memory capture and retrieval;
 - richer agenda and task triage;
 - better compaction summaries and automatic memory flush;

@@ -23,6 +23,7 @@ from app.services.knowledge_ingestion import (
 )
 from app.services.market_watch import (
     fetch_market_watch,
+    format_market_brief,
     format_market_watch,
     market_watch_memory_note,
 )
@@ -204,7 +205,7 @@ async def _price_alert_output(*, user_id: int) -> str:
 
 async def _morning_output(*, user_id: int, memory: ObsidianMemory) -> str:
     settings = get_settings()
-    markets = format_market_watch(await fetch_market_watch())
+    markets = format_market_brief(await fetch_market_watch())
     agenda = build_agenda(
         memory=memory,
         jobs=AssistantJobStore(settings.obsidian_vault_path, timezone_name=settings.timezone),

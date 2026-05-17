@@ -22,6 +22,11 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
     assert "budget" in commands
     assert "budget_set" in commands
     assert "budget_plan" in commands
+    assert "expense" in commands
+    assert "income" in commands
+    assert "accounts" in commands
+    assert "subscriptions" in commands
+    assert "cashflow" in commands
     assert "family" in commands
     assert "family_create" in commands
     assert "family_join" in commands
@@ -45,8 +50,12 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
     assert "tool" in commands
     assert "mini_app" in commands
     assert "markets" in commands
+    assert "market_brief" in commands
     assert "morning" in commands
+    assert "evening" in commands
+    assert "week" in commands
     assert "status" in commands
+    assert "capability_center" in commands
     assert "new" in commands
     assert "compact" in commands
     assert "assistants" in commands
@@ -70,10 +79,19 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
     assert "task" in commands
     assert "journal" in commands
     assert "digest" in commands
+    assert "memory_rebuild_tree" in commands
+    assert "memory_tree" in commands
+    assert "memory_profile" in commands
+    assert "project_summary" in commands
+    assert "weekly_summary" in commands
     assert "today" in commands
     assert "tasks" in commands
     assert "context" in commands
     assert "person" in commands
+    assert "people" in commands
+    assert "followup" in commands
+    assert "draft_email" in commands
+    assert "objects" in commands
     assert "decide" in commands
     assert "recent" in commands
     assert "collections" in commands
@@ -88,6 +106,10 @@ def test_public_bot_commands_exclude_admin_commands() -> None:
     assert "spaces" in commands
     assert "space" in commands
     assert "sources" in commands
+    assert "source_add" in commands
+    assert "source_list" in commands
+    assert "source_sync" in commands
+    assert "source_delete" in commands
     assert "assistant_capabilities" in commands
     assert "delete_memory" in commands
     assert "approve" in commands
@@ -140,5 +162,7 @@ def test_public_commands_respect_feature_flags() -> None:
 
     assert "mini_app" not in commands
     assert "markets" not in commands
+    assert "market_brief" not in commands
     assert "/mini_app" not in help_text(settings=settings)
     assert "/markets" not in help_text(settings=settings)
+    assert "/market_brief" not in help_text(settings=settings)

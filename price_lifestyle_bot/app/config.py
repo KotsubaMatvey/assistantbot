@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     assistant_group_trigger_policy: str = "mention"
     assistant_default_mode: str = "secretary"
     tg_mini_app_url: str = ""
+    mini_app_api_enabled: bool = True
+    mini_app_api_host: str = "0.0.0.0"
+    mini_app_api_port: int = 8080
+    mini_app_static_dir: str = "miniapp/dist"
     bot_enabled_features: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["all"]
     )
@@ -116,6 +120,12 @@ class Settings(BaseSettings):
                 ),
                 "assistant_default_mode": os.getenv("ASSISTANT_DEFAULT_MODE", "secretary"),
                 "tg_mini_app_url": os.getenv("TG_MINI_APP_URL", ""),
+                "mini_app_api_enabled": (
+                    os.getenv("MINI_APP_API_ENABLED", "true").lower() == "true"
+                ),
+                "mini_app_api_host": os.getenv("MINI_APP_API_HOST", "0.0.0.0"),
+                "mini_app_api_port": int(os.getenv("MINI_APP_API_PORT", "8080")),
+                "mini_app_static_dir": os.getenv("MINI_APP_STATIC_DIR", "miniapp/dist"),
                 "bot_enabled_features": _parse_feature_names(
                     os.getenv("BOT_ENABLED_FEATURES", "all")
                 ),

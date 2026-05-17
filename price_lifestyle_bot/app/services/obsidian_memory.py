@@ -4,14 +4,16 @@ import hashlib
 import re
 import sqlite3
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
+from math import sqrt
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.services.basket_parser import BasketItemParsed
+from app.services.object_store import ObjectStore
 
 STORE_LABELS = {
     "smart": "Smart",
@@ -36,6 +38,15 @@ SYNONYM_GROUPS = (
     ("задача", "дело", "todo", "надо", "нужно"),
     ("не нравится", "избегать", "исключить", "не покупать"),
     ("акция", "скидка", "промо", "дешевле"),
+)
+
+SEMANTIC_GROUPS = SYNONYM_GROUPS + (
+    ("решение", "решили", "решить", "выбор", "выбрать", "вариант", "отложить"),
+    ("техника", "техник", "ноутбук", "компьютер", "телефон", "гаджет", "устройство"),
+    ("документ", "документы", "паспорт", "договор", "счет", "бумаги"),
+    ("рынок", "рынки", "btc", "bitcoin", "индекс", "индексы", "акции", "сигнал"),
+    ("бюджет", "траты", "расход", "чек", "платеж", "оплата", "деньги"),
+    ("здоровье", "врач", "анализ", "лекарство", "прием", "самочувствие"),
 )
 
 CARD_MARKERS = ("карта", "карты", "картой", "лояльност", "скидоч")
@@ -190,6 +201,7 @@ class ObsidianMemory:
         duplicate = self._find_duplicate(user_id=user_id, checksum=checksum)
         if duplicate is not None:
             self._index_note(user_id=user_id, path=duplicate)
+            ObjectStore(str(self.vault_path)).index_markdown_note(user_id=user_id, path=duplicate)
             return duplicate
         metadata = classify_note(clean_text)
         effective_type = note_type or metadata.note_type
@@ -222,6 +234,7 @@ class ObsidianMemory:
         if effective_type in {"fact", "preference", "task", "link", "important", "reminder"}:
             self._append_profile_fact(user_id, clean_text)
         self._index_note(user_id=user_id, path=path)
+        ObjectStore(str(self.vault_path)).index_markdown_note(user_id=user_id, path=path)
         return path
 
     def remember_basket(
@@ -269,30 +282,56 @@ class ObsidianMemory:
         if not expanded:
             return []
 
+        search_limit = max(limit * 3, limit)
         indexed_results = self._search_index(
             user_id=user_id,
             query=query,
-            limit=limit,
+            limit=search_limit,
             space=space,
         )
-        if indexed_results:
-            return indexed_results
+        semantic_results = self._semantic_search(
+            user_id=user_id,
+            query=query,
+            tokens=tokens,
+            expanded=expanded,
+            limit=search_limit,
+            space=space,
+        )
+        return _merge_search_results(indexed_results, semantic_results, limit)
 
+    def _semantic_search(
+        self,
+        *,
+        user_id: int,
+        query: str,
+        tokens: list[str],
+        expanded: list[str],
+        limit: int,
+        space: str | None,
+    ) -> list[MemorySearchResult]:
+        query_vector = _semantic_vector(" ".join([query, *expanded]))
+        if not query_vector:
+            return []
+        snippet_terms = _semantic_terms(" ".join([query, *expanded]))
         results: list[MemorySearchResult] = []
-        for path, text in self._iter_user_markdown(user_id):
+        for path, text in self._iter_user_notes(user_id):
             metadata = _parse_frontmatter(text)
             if space is not None and metadata.space != _normalize_space(space):
                 continue
             body = _strip_frontmatter(text)
-            searchable = " ".join([body, metadata.note_type, " ".join(metadata.tags)]).lower()
-            score = _score_text(searchable, tokens, expanded)
-            if score <= 0:
+            searchable = " ".join(
+                [body, metadata.note_type, " ".join(metadata.tags), metadata.title or ""]
+            )
+            keyword_score = _score_text(searchable, tokens, expanded)
+            semantic_score = _semantic_similarity(query_vector, _semantic_vector(searchable))
+            if keyword_score <= 0 and semantic_score < 0.18:
                 continue
+            score = min(keyword_score * 10, 120) + int(semantic_score * 100)
             results.append(
                 MemorySearchResult(
                     path=path,
                     score=score,
-                    snippet=_snippet(text, expanded),
+                    snippet=_snippet(text, snippet_terms),
                     note_type=metadata.note_type,
                     tags=metadata.tags,
                     space=metadata.space,
@@ -1428,6 +1467,78 @@ def _score_text(text: str, tokens: list[str], expanded: list[str]) -> int:
         if token not in tokens:
             score += normalized.count(token)
     return score
+
+
+def _merge_search_results(
+    indexed_results: list[MemorySearchResult],
+    semantic_results: list[MemorySearchResult],
+    limit: int,
+) -> list[MemorySearchResult]:
+    merged: dict[Path, MemorySearchResult] = {}
+    for result in indexed_results:
+        boosted = replace(result, score=result.score + 1000)
+        existing = merged.get(result.path)
+        if existing is None or boosted.score > existing.score:
+            merged[result.path] = boosted
+
+    for result in semantic_results:
+        existing = merged.get(result.path)
+        if existing is None:
+            merged[result.path] = result
+            continue
+        merged[result.path] = replace(existing, score=existing.score + result.score)
+
+    ranked = sorted(merged.values(), key=lambda result: (-result.score, str(result.path)))
+    return ranked[:limit]
+
+
+def _semantic_vector(text: str) -> Counter[str]:
+    return Counter(_semantic_terms(text))
+
+
+def _semantic_terms(text: str) -> list[str]:
+    tokens = _tokens(text)
+    terms = set(_expand_terms(tokens))
+    terms.update(_expand_semantic_terms(terms))
+    for token in tokens:
+        stem = _soft_stem(token)
+        if stem:
+            terms.add(stem)
+        terms.update(f"tri:{trigram}" for trigram in _character_trigrams(token))
+    return list(terms)
+
+
+def _expand_semantic_terms(terms: set[str]) -> set[str]:
+    normalized_terms = {_normalize_text(term) for term in terms}
+    term_stems = {stem for term in normalized_terms if (stem := _soft_stem(term))}
+    lookup = normalized_terms | term_stems
+    expanded = set(normalized_terms)
+    for group in SEMANTIC_GROUPS:
+        group_terms = {_normalize_text(item) for item in group}
+        group_stems = {stem for term in group_terms if (stem := _soft_stem(term))}
+        if lookup & (group_terms | group_stems):
+            expanded.update(group_terms)
+            expanded.update(group_stems)
+    return expanded
+
+
+def _semantic_similarity(left: Counter[str], right: Counter[str]) -> float:
+    if not left or not right:
+        return 0.0
+    dot = sum(weight * right.get(term, 0) for term, weight in left.items())
+    if dot <= 0:
+        return 0.0
+    left_norm = sqrt(sum(weight * weight for weight in left.values()))
+    right_norm = sqrt(sum(weight * weight for weight in right.values()))
+    if not left_norm or not right_norm:
+        return 0.0
+    return dot / (left_norm * right_norm)
+
+
+def _character_trigrams(token: str) -> list[str]:
+    if len(token) < 4:
+        return []
+    return [token[index : index + 3] for index in range(len(token) - 2)]
 
 
 def _stores_matching(text: str, markers: tuple[str, ...]) -> list[str]:

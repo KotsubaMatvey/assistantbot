@@ -48,6 +48,29 @@ def test_search_user_notes_uses_synonyms_and_keeps_users_separate(tmp_path) -> N
     assert all("другого пользователя" not in result.snippet for result in results)
 
 
+def test_search_user_notes_uses_local_semantic_vectors(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    memory.remember_user_note(
+        user_id=123,
+        text="Решили отложить покупку ноутбука до осенней распродажи.",
+    )
+
+    results = memory.search_user_notes(user_id=123, query="что решили по технике")
+
+    assert results
+    assert "ноутбука" in results[0].snippet
+
+
+def test_search_user_notes_keeps_exact_match_above_semantic_match(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    memory.remember_user_note(user_id=123, text="Паспорт лежит в синей папке.")
+    memory.remember_user_note(user_id=123, text="Документы по машине проверить позже.")
+
+    results = memory.search_user_notes(user_id=123, query="паспорт")
+
+    assert results[0].snippet == "Паспорт лежит в синей папке."
+
+
 def test_ask_user_memory_answers_from_matching_notes(tmp_path) -> None:
     memory = ObsidianMemory(str(tmp_path))
     memory.remember_user_note(user_id=123, text="Предпочитаю молоко 2.5 по акции.")

@@ -9,6 +9,7 @@ from app.bot.menu import configure_bot_menu
 from app.config import get_settings
 from app.db.session import dispose_engine
 from app.logging_config import configure_logging, get_logger
+from app.services.mini_app_server import MiniAppHttpServer
 from app.services.scheduler import create_scheduler
 
 logger = get_logger(__name__)
@@ -23,6 +24,8 @@ async def main() -> None:
     bot = Bot(token=settings.bot_token)
     dispatcher = create_dispatcher()
     scheduler = create_scheduler(bot=bot)
+    mini_app_server = MiniAppHttpServer(settings)
+    await mini_app_server.start()
     scheduler.start()
     await configure_bot_menu(bot, settings)
     logger.info("bot_started", city=settings.city)
@@ -30,6 +33,7 @@ async def main() -> None:
         await dispatcher.start_polling(bot)
     finally:
         scheduler.shutdown(wait=False)
+        await mini_app_server.stop()
         await bot.session.close()
         await dispose_engine()
 

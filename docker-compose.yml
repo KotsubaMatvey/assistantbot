@@ -40,6 +40,10 @@ services:
       ASSISTANT_GROUP_TRIGGER_POLICY: ${ASSISTANT_GROUP_TRIGGER_POLICY:-mention}
       ASSISTANT_DEFAULT_MODE: ${ASSISTANT_DEFAULT_MODE:-secretary}
       TG_MINI_APP_URL: ${TG_MINI_APP_URL:-}
+      MINI_APP_API_ENABLED: ${MINI_APP_API_ENABLED:-true}
+      MINI_APP_API_HOST: ${MINI_APP_API_HOST:-0.0.0.0}
+      MINI_APP_API_PORT: ${MINI_APP_API_PORT:-8080}
+      MINI_APP_STATIC_DIR: ${MINI_APP_STATIC_DIR:-miniapp/dist}
       BOT_ENABLED_FEATURES: ${BOT_ENABLED_FEATURES:-all}
       BOT_DISABLED_FEATURES: ${BOT_DISABLED_FEATURES:-}
       LIVE_PRICE_REFRESH_ENABLED: ${LIVE_PRICE_REFRESH_ENABLED:-false}
@@ -59,6 +63,9 @@ services:
         condition: service_started
     volumes:
       - ./assistantbotmemory:/app/assistantbotmemory
+      - ./miniapp/dist:/app/miniapp/dist:ro
+    ports:
+      - "${MINI_APP_API_PORT:-8080}:8080"
     command: >
       sh -c "alembic upgrade head &&
              python -m app.scripts.seed_stores &&

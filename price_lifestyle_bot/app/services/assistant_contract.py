@@ -45,10 +45,16 @@ def assistant_capabilities() -> list[AssistantCapability]:
         ),
         AssistantCapability("llm_answers", False, "LLM layer is intentionally not connected yet"),
         AssistantCapability(
-            "vector_search",
-            False,
-            "Embeddings are reserved for the LLM/RAG phase",
+            "semantic_lite_search",
+            True,
+            "Local token/n-gram semantic search without paid embeddings",
         ),
+        AssistantCapability("memory_tree", True, "Daily, weekly, project and profile summaries"),
+        AssistantCapability("unified_sources", True, "RSS, URL and public GitHub source configs"),
+        AssistantCapability("object_system", True, "Local-first typed objects over memory"),
+        AssistantCapability("communication_assistant", True, "People notes, follow-ups and drafts"),
+        AssistantCapability("local_finance", True, "Budget, accounts, subscriptions and cashflow"),
+        AssistantCapability("daily_command_center", True, "Morning, evening and weekly flows"),
     ]
 
 
