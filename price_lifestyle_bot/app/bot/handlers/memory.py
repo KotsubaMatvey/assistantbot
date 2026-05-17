@@ -4,7 +4,12 @@ from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
+from aiogram.types import (
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+    WebAppInfo,
+)
 from sqlalchemy import desc, select
 
 from app.bot.feature_flags import is_feature_enabled
@@ -1323,17 +1328,23 @@ async def mini_app_handler(message: Message) -> None:
     if not manifest.enabled:
         await message.answer(format_mini_app_status(manifest))
         return
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
             [
-                InlineKeyboardButton(
+                KeyboardButton(
                     text="Open Mini App",
                     web_app=WebAppInfo(url=manifest.url),
                 )
             ]
-        ]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
     )
-    await message.answer(format_mini_app_status(manifest), reply_markup=keyboard)
+    await message.answer(
+        format_mini_app_status(manifest)
+        + "\n\nOpen with this keyboard button when you want Mini App actions to return to the bot.",
+        reply_markup=keyboard,
+    )
 
 
 @router.message(Command("assistant_capabilities"))
