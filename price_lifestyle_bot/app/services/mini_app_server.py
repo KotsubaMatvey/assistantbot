@@ -18,12 +18,16 @@ from app.services.mini_app_state import (
     add_mini_app_person,
     add_mini_app_receipt,
     add_mini_app_reminder,
+    add_mini_app_source,
     add_mini_app_task,
     add_mini_app_transaction,
     build_mini_app_state,
+    delete_mini_app_source,
     update_mini_app_account,
     update_mini_app_subscription,
 )
+from app.services.obsidian_memory import ObsidianMemory
+from app.services.source_connectors import SourceStore
 
 logger = get_logger(__name__)
 
@@ -72,6 +76,9 @@ def create_mini_app_web_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/miniapp/reminder", _reminder)
     app.router.add_post("/api/miniapp/person", _person)
     app.router.add_post("/api/miniapp/receipt", _receipt)
+    app.router.add_post("/api/miniapp/source", _source)
+    app.router.add_post("/api/miniapp/source/delete", _source_delete)
+    app.router.add_post("/api/miniapp/source/sync", _source_sync)
     app.router.add_route("OPTIONS", "/{tail:.*}", _options)
     _add_static_routes(app, settings)
     return app
@@ -265,6 +272,65 @@ async def _receipt(request: web.Request) -> web.Response:
         user_id,
         "mini_app_receipt_save",
         f"chars={len(str(payload.get('text', '')))}",
+    )
+    return _state_response(request, user_id)
+
+
+async def _source(request: web.Request) -> web.Response:
+    user_id = _user_id_from_request(request)
+    payload = await _json_payload(request)
+    try:
+        source = add_mini_app_source(
+            vault_path=_settings(request).obsidian_vault_path,
+            user_id=user_id,
+            source_type=str(payload.get("source_type", "")),
+            target=str(payload.get("target", "")),
+        )
+    except ValueError as exc:
+        raise web.HTTPBadRequest(text=str(exc)) from exc
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_source_add",
+        f"{source.type} {source.url}",
+    )
+    return _state_response(request, user_id)
+
+
+async def _source_delete(request: web.Request) -> web.Response:
+    user_id = _user_id_from_request(request)
+    payload = await _json_payload(request)
+    source_id = str(payload.get("id", ""))
+    try:
+        deleted = delete_mini_app_source(
+            vault_path=_settings(request).obsidian_vault_path,
+            user_id=user_id,
+            source_id=source_id,
+        )
+    except ValueError as exc:
+        raise web.HTTPBadRequest(text=str(exc)) from exc
+    if not deleted:
+        raise web.HTTPNotFound(text="source not found")
+    _record_mini_app_event(request, user_id, "mini_app_source_delete", source_id)
+    return _state_response(request, user_id)
+
+
+async def _source_sync(request: web.Request) -> web.Response:
+    user_id = _user_id_from_request(request)
+    payload = await _json_payload(request)
+    source_id = str(payload.get("id", "")).strip() or None
+    store = SourceStore(_settings(request).obsidian_vault_path)
+    results = await store.sync_sources(
+        user_id=user_id,
+        memory=ObsidianMemory(_settings(request).obsidian_vault_path),
+        source_id=source_id,
+    )
+    ok_count = sum(1 for result in results if result.ok)
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_source_sync",
+        f"requested={source_id or 'all'} ok={ok_count}/{len(results)}",
     )
     return _state_response(request, user_id)
 

@@ -156,6 +156,7 @@ export function App() {
           state={miniState?.memory}
           loading={stateLoading}
           error={stateError}
+          onMutate={mutateState}
           onRefresh={refreshState}
         />
       )}

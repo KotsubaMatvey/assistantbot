@@ -21,9 +21,11 @@ from app.services.mini_app import (
 )
 from app.services.mini_app_server import validate_telegram_init_data
 from app.services.mini_app_state import (
+    add_mini_app_source,
     add_mini_app_task,
     add_mini_app_transaction,
     build_mini_app_state,
+    delete_mini_app_source,
     update_mini_app_account,
 )
 from app.services.object_store import ObjectStore
@@ -192,6 +194,12 @@ def test_mini_app_state_uses_live_local_stores(tmp_path) -> None:
         category="food",
     )
     add_mini_app_task(vault_path=str(tmp_path), user_id=123, text="real mini app task")
+    source = add_mini_app_source(
+        vault_path=str(tmp_path),
+        user_id=123,
+        source_type="github",
+        target="KotsubaMatvey/assistantbot",
+    )
     AuditLogStore(str(tmp_path)).record(
         user_id=123,
         action="mini_app_task_create",
@@ -208,6 +216,12 @@ def test_mini_app_state_uses_live_local_stores(tmp_path) -> None:
     assert state["finance"]["expenses"] == "250.00"
     assert state["today"]["tasks"][0]["snippet"] == "real mini app task"
     assert state["memory"]["events"][0]["action"] == "mini_app_task_create"
+    assert state["memory"]["sources"][0]["id"] == source.id
+    assert delete_mini_app_source(
+        vault_path=str(tmp_path),
+        user_id=123,
+        source_id=source.id,
+    )
 
 
 def test_telegram_init_data_validation_extracts_user_id() -> None:
@@ -255,6 +269,13 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
         '{"type":"finance_subscription","name":"Music","amount":"199"}'
     )
     receipt_payload = parse_mini_app_payload('{"type":"receipt_save","text":"store\\nmilk 100"}')
+    source_add_payload = parse_mini_app_payload(
+        '{"type":"source_add","source_type":"github","target":"owner/repo"}'
+    )
+    source_delete_payload = parse_mini_app_payload(
+        '{"type":"source_delete","id":"src_123"}'
+    )
+    source_sync_payload = parse_mini_app_payload('{"type":"source_sync","id":"src_123"}')
 
     assert "Possible tasks" in summary.body
     assert "Possible decisions" in summary.body
@@ -297,6 +318,10 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert account_payload.data["name"] == "Cash"
     assert subscription_payload.data["amount"] == "199"
     assert receipt_payload.text == "store\nmilk 100"
+    assert source_add_payload.data["source_type"] == "github"
+    assert source_add_payload.data["target"] == "owner/repo"
+    assert source_delete_payload.data["id"] == "src_123"
+    assert source_sync_payload.data["id"] == "src_123"
 
 
 def test_mini_app_payload_rejects_oversized_text() -> None:
@@ -317,6 +342,8 @@ def test_mini_app_payload_rejects_oversized_text() -> None:
         parse_mini_app_payload(
             '{"type":"finance_transaction","kind":"transfer","amount":"1","category":"x"}'
         )
+    with pytest.raises(ValueError, match="source type"):
+        parse_mini_app_payload('{"type":"source_add","source_type":"mail","target":"x"}')
 
 
 def _signed_init_data(*, bot_token: str, user_id: int) -> str:

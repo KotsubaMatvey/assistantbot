@@ -189,6 +189,23 @@ export function miniAppMutationToTelegramPayload(
       amount: String(body.amount ?? ""),
     };
   }
+  if (path === "/api/miniapp/source") {
+    const sourceType = String(body.source_type ?? "");
+    if (sourceType !== "rss" && sourceType !== "github" && sourceType !== "url") {
+      return null;
+    }
+    return {
+      type: "source_add",
+      source_type: sourceType,
+      target: String(body.target ?? ""),
+    };
+  }
+  if (path === "/api/miniapp/source/delete") {
+    return { type: "source_delete", id: String(body.id ?? "") };
+  }
+  if (path === "/api/miniapp/source/sync") {
+    return { type: "source_sync", id: String(body.id ?? "") || undefined };
+  }
   return null;
 }
 

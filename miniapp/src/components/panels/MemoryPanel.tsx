@@ -1,4 +1,6 @@
 import { Brain, Database, RefreshCw, Wrench } from "lucide-react";
+import type { FormEvent } from "react";
+import { useState } from "react";
 import { ActionButton } from "../ActionButton";
 import type { MiniAppState } from "../../domain/api";
 import { eventBus } from "../../domain/events";
@@ -7,11 +9,26 @@ type MemoryPanelProps = {
   state?: MiniAppState["memory"];
   loading: boolean;
   error: string;
+  onMutate: (path: string, body: Record<string, unknown>) => Promise<void>;
   onRefresh: () => Promise<void>;
 };
 
-export function MemoryPanel({ state, loading, error, onRefresh }: MemoryPanelProps) {
+export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: MemoryPanelProps) {
+  const [source, setSource] = useState({ source_type: "rss", target: "" });
   const health = state?.health;
+
+  async function submitSource(event: FormEvent) {
+    event.preventDefault();
+    if (!source.target.trim()) {
+      return;
+    }
+    await onMutate("/api/miniapp/source", {
+      source_type: source.source_type,
+      target: source.target.trim(),
+    });
+    setSource((current) => ({ ...current, target: "" }));
+  }
+
   return (
     <section className="grid gap-3" aria-label="Память">
       {(loading || error) && (
@@ -49,16 +66,62 @@ export function MemoryPanel({ state, loading, error, onRefresh }: MemoryPanelPro
 
       <div className="grid gap-2">
         {(state?.sources ?? []).map((source) => (
-          <article key={source.id} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-            <span className="text-xs font-black uppercase text-teal-300">{source.type}</span>
-            <strong className="mt-1 block break-words text-sm text-zinc-50">{source.url}</strong>
-            <span className="mt-1 block text-xs text-zinc-400">
-              {source.enabled ? "enabled" : "disabled"}
-              {source.last_error ? ` · ${source.last_error}` : ""}
-            </span>
+          <article
+            key={source.id}
+            className="grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3"
+          >
+            <div>
+              <span className="text-xs font-black uppercase text-teal-300">{source.type}</span>
+              <strong className="mt-1 block break-words text-sm text-zinc-50">
+                {source.url}
+              </strong>
+              <span className="mt-1 block text-xs text-zinc-400">
+                {source.enabled ? "enabled" : "disabled"}
+                {source.last_error ? ` · ${source.last_error}` : ""}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <ActionButton
+                icon={<RefreshCw size={16} />}
+                onClick={() => void onMutate("/api/miniapp/source/sync", { id: source.id })}
+              >
+                Sync
+              </ActionButton>
+              <ActionButton
+                onClick={() => void onMutate("/api/miniapp/source/delete", { id: source.id })}
+              >
+                Delete
+              </ActionButton>
+            </div>
           </article>
         ))}
       </div>
+
+      <form
+        className="grid grid-cols-[110px_1fr_96px] gap-2 rounded-lg border border-zinc-700 bg-zinc-900 p-3 max-[620px]:grid-cols-1"
+        onSubmit={submitSource}
+      >
+        <select
+          className="min-h-10 rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-sm font-black text-zinc-50 outline-none"
+          value={source.source_type}
+          onChange={(event) => setSource({ ...source, source_type: event.target.value })}
+        >
+          <option value="rss">RSS</option>
+          <option value="github">GitHub</option>
+          <option value="url">URL</option>
+        </select>
+        <input
+          className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+          value={source.target}
+          onChange={(event) => setSource({ ...source, target: event.target.value })}
+        />
+        <button
+          className="min-h-10 rounded-lg border border-teal-300 bg-teal-300 px-3 text-sm font-black text-zinc-950"
+          type="submit"
+        >
+          Add
+        </button>
+      </form>
 
       <div className="grid gap-2">
         {(state?.events ?? []).slice(0, 6).map((event) => (
@@ -100,7 +163,7 @@ export function MemoryPanel({ state, loading, error, onRefresh }: MemoryPanelPro
         </ActionButton>
         <ActionButton
           icon={<RefreshCw size={16} />}
-          onClick={() => eventBus.emit("command:send", { command: "source_sync" })}
+          onClick={() => void onMutate("/api/miniapp/source/sync", {})}
         >
           Sync
         </ActionButton>

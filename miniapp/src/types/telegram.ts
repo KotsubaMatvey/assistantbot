@@ -15,7 +15,10 @@ export type TelegramPayload =
     }
   | { type: "finance_account"; name: string; balance: string }
   | { type: "finance_subscription"; name: string; amount: string }
-  | { type: "receipt_save"; text: string };
+  | { type: "receipt_save"; text: string }
+  | { type: "source_add"; source_type: "rss" | "github" | "url"; target: string }
+  | { type: "source_delete"; id: string }
+  | { type: "source_sync"; id?: string };
 
 export type BotCommand =
   | "markets"

@@ -12,7 +12,7 @@ from app.services.finance import FinanceStore, parse_amount
 from app.services.memory_tree import MemoryTreeStore
 from app.services.object_store import ObjectStore
 from app.services.obsidian_memory import ObsidianMemory, parse_reminder_request
-from app.services.source_connectors import SourceStore
+from app.services.source_connectors import SourceRecord, SourceStore
 from app.services.spending import SpendingStore, current_month, parse_receipt_text
 
 
@@ -279,6 +279,27 @@ def add_mini_app_receipt(*, vault_path: str, user_id: int, text: str) -> None:
         items=[(item.name, str(item.price), item.category) for item in receipt.items],
         purchased_at=receipt.purchased_at,
     )
+
+
+def add_mini_app_source(
+    *,
+    vault_path: str,
+    user_id: int,
+    source_type: str,
+    target: str,
+) -> SourceRecord:
+    return SourceStore(vault_path).add_source(
+        user_id=user_id,
+        source_type=source_type,
+        target=target,
+    )
+
+
+def delete_mini_app_source(*, vault_path: str, user_id: int, source_id: str) -> bool:
+    clean_id = source_id.strip()
+    if not clean_id:
+        raise ValueError("source id is empty")
+    return SourceStore(vault_path).delete_source(user_id=user_id, source_id=clean_id)
 
 
 def _focus_items(

@@ -199,6 +199,27 @@ def parse_mini_app_payload(raw_data: str) -> MiniAppPayload:
                 "amount": _required_field(raw, "amount", max_chars=MAX_FORM_FIELD_CHARS),
             },
         )
+    if payload_type == "source_add":
+        source_type = _required_field(raw, "source_type", max_chars=20).lower()
+        if source_type not in {"rss", "github", "url"}:
+            raise ValueError("source type must be rss, github, or url")
+        return MiniAppPayload(
+            type=payload_type,
+            data={
+                "source_type": source_type,
+                "target": _required_field(raw, "target", max_chars=MAX_FORM_TEXT_CHARS),
+            },
+        )
+    if payload_type == "source_delete":
+        return MiniAppPayload(
+            type=payload_type,
+            data={"id": _required_field(raw, "id", max_chars=MAX_FORM_FIELD_CHARS)},
+        )
+    if payload_type == "source_sync":
+        return MiniAppPayload(
+            type=payload_type,
+            data={"id": _optional_field(raw, "id", max_chars=MAX_FORM_FIELD_CHARS)},
+        )
     raise ValueError("unsupported Mini App payload type")
 
 

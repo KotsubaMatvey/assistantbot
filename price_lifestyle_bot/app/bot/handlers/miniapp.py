@@ -54,11 +54,15 @@ from app.services.mini_app_state import (
     add_mini_app_person,
     add_mini_app_receipt,
     add_mini_app_reminder,
+    add_mini_app_source,
     add_mini_app_task,
     add_mini_app_transaction,
+    delete_mini_app_source,
     update_mini_app_account,
     update_mini_app_subscription,
 )
+from app.services.obsidian_memory import ObsidianMemory
+from app.services.source_connectors import SourceStore, format_source_sync_results
 
 router = Router()
 logger = get_logger(__name__)
@@ -204,6 +208,51 @@ async def mini_app_data_handler(message: Message) -> None:
             return
         _audit_mini_app(message, "mini_app_receipt_save", f"chars={len(payload.text)}")
         await message.answer("Receipt saved from Mini App.")
+        return
+    if payload.type == "source_add":
+        try:
+            source = add_mini_app_source(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                source_type=payload.data["source_type"],
+                target=payload.data["target"],
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_source_rejected", str(exc))
+            await message.answer(f"Source rejected: {exc}")
+            return
+        _audit_mini_app(message, "mini_app_source_add", f"{source.type} {source.url}")
+        await message.answer(f"Source saved from Mini App: {source.id}")
+        return
+    if payload.type == "source_delete":
+        try:
+            deleted = delete_mini_app_source(
+                vault_path=settings.obsidian_vault_path,
+                user_id=user_id,
+                source_id=payload.data["id"],
+            )
+        except ValueError as exc:
+            _audit_mini_app(message, "mini_app_source_delete_rejected", str(exc))
+            await message.answer(f"Source delete rejected: {exc}")
+            return
+        if not deleted:
+            await message.answer("Source not found.")
+            return
+        _audit_mini_app(message, "mini_app_source_delete", payload.data["id"])
+        await message.answer("Source deleted from Mini App.")
+        return
+    if payload.type == "source_sync":
+        results = await SourceStore(settings.obsidian_vault_path).sync_sources(
+            user_id=user_id,
+            memory=ObsidianMemory(settings.obsidian_vault_path),
+            source_id=payload.data.get("id") or None,
+        )
+        _audit_mini_app(
+            message,
+            "mini_app_source_sync",
+            f"requested={payload.data.get('id') or 'all'} count={len(results)}",
+        )
+        await message.answer(format_source_sync_results(results)[:3900])
         return
 
     _audit_mini_app(message, "mini_app_command", payload.command)
