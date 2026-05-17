@@ -1,21 +1,51 @@
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PixelAssistant } from "./components/PixelAssistant";
 import { Tabs } from "./components/Tabs";
 import { AssistantPanel } from "./components/panels/AssistantPanel";
+import { FinancePanel } from "./components/panels/FinancePanel";
 import { MarketsPanel } from "./components/panels/MarketsPanel";
 import { MemoryPanel } from "./components/panels/MemoryPanel";
 import { ShoppingPanel } from "./components/panels/ShoppingPanel";
+import { TodayPanel } from "./components/panels/TodayPanel";
+import { loadMiniAppState, postMiniAppMutation, type MiniAppState } from "./domain/api";
 import type { AssistantState } from "./domain/assistant";
 import { eventBus, type TabId } from "./domain/events";
 import { attachRules } from "./domain/rules";
 import type { TelegramPayload, TelegramWebApp } from "./types/telegram";
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("assistant");
+  const [activeTab, setActiveTab] = useState<TabId>("today");
   const [assistantState, setAssistantState] = useState<AssistantState>("idle");
   const [toast, setToast] = useState("");
+  const [miniState, setMiniState] = useState<MiniAppState | null>(null);
+  const [stateLoading, setStateLoading] = useState(true);
+  const [stateError, setStateError] = useState("");
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
+
+  const refreshState = useCallback(async () => {
+    setStateLoading(true);
+    setStateError("");
+    try {
+      setMiniState(await loadMiniAppState());
+    } catch (error) {
+      setStateError(error instanceof Error ? error.message : "Mini App API error");
+    } finally {
+      setStateLoading(false);
+    }
+  }, []);
+
+  const mutateState = useCallback(async (path: string, body: Record<string, unknown>) => {
+    setAssistantState("working");
+    setStateError("");
+    try {
+      setMiniState(await postMiniAppMutation(path, body));
+      setToast("Saved");
+    } catch (error) {
+      setAssistantState("sad");
+      setStateError(error instanceof Error ? error.message : "Mini App API error");
+    }
+  }, []);
 
   useEffect(() => {
     if (!telegram) {
@@ -53,6 +83,10 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    void refreshState();
+  }, [refreshState]);
+
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-3xl gap-3 px-4 py-4 text-zinc-50">
       <header className="flex items-center justify-between gap-4">
@@ -64,7 +98,7 @@ export function App() {
           className="grid size-11 place-items-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-50 shadow-2xl"
           type="button"
           aria-label="Обновить статус"
-          onClick={() => eventBus.emit("command:send", { command: "status" })}
+          onClick={() => void refreshState()}
         >
           <RefreshCw size={18} />
         </button>
@@ -73,10 +107,34 @@ export function App() {
       <PixelAssistant state={assistantState} />
       <Tabs activeTab={activeTab} onSelect={setActiveTab} />
 
+      {activeTab === "today" && (
+        <TodayPanel
+          state={miniState?.today}
+          loading={stateLoading}
+          error={stateError}
+          onMutate={mutateState}
+          onRefresh={refreshState}
+        />
+      )}
+      {activeTab === "assistant" && <AssistantPanel />}
+      {activeTab === "finance" && (
+        <FinancePanel
+          state={miniState?.finance}
+          loading={stateLoading}
+          error={stateError}
+          onMutate={mutateState}
+        />
+      )}
+      {activeTab === "memory" && (
+        <MemoryPanel
+          state={miniState?.memory}
+          loading={stateLoading}
+          error={stateError}
+          onRefresh={refreshState}
+        />
+      )}
       {activeTab === "shopping" && <ShoppingPanel />}
       {activeTab === "markets" && <MarketsPanel />}
-      {activeTab === "assistant" && <AssistantPanel />}
-      {activeTab === "memory" && <MemoryPanel />}
 
       <div
         className={

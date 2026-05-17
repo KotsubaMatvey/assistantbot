@@ -1,7 +1,7 @@
 import type { AssistantState } from "./assistant";
 import type { BotCommand } from "../types/telegram";
 
-export type TabId = "shopping" | "markets" | "assistant" | "memory";
+export type TabId = "today" | "finance" | "shopping" | "markets" | "assistant" | "memory";
 
 export type AppEvents = {
   "tab:selected": { tab: TabId };

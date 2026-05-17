@@ -1,40 +1,82 @@
-import { Activity, TrendingUp } from "lucide-react";
+import { Activity, RefreshCw, TrendingUp } from "lucide-react";
+import { useEffect, useState } from "react";
 import { ActionButton } from "../ActionButton";
+import { loadMiniAppMarkets, type MiniAppMarkets } from "../../domain/api";
 import { eventBus } from "../../domain/events";
 
-const markets = [
-  ["BTC.D", "53.2%"],
-  ["S&P 500", "5,108"],
-  ["Nasdaq", "16,340"],
-  ["Dow Jones", "39,120"],
-];
-
 export function MarketsPanel() {
+  const [markets, setMarkets] = useState<MiniAppMarkets | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function refreshMarkets() {
+    setLoading(true);
+    setError("");
+    try {
+      setMarkets(await loadMiniAppMarkets());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Market API error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshMarkets();
+  }, []);
+
+  const btc = markets?.quotes.find((quote) => quote.key === "btc");
+
   return (
     <section className="grid gap-3" aria-label="Рынки">
       <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-5">
         <span className="flex items-center gap-2 text-sm font-black text-zinc-400">
           <TrendingUp size={18} />
-          BTC
+          {btc?.name ?? "Bitcoin"}
         </span>
-        <strong className="mt-2 block text-4xl font-black leading-none text-zinc-50">$70,240</strong>
-        <em className="mt-2 block text-sm not-italic text-teal-300">+1.45%</em>
+        <strong className="mt-2 block text-4xl font-black leading-none text-zinc-50">
+          {btc?.value ? `${btc.value}${btc.unit}` : "n/a"}
+        </strong>
+        <em className="mt-2 block text-sm not-italic text-teal-300">
+          {btc?.change_percent ? `${btc.change_percent}%` : markets?.risk_regime ?? "loading"}
+        </em>
       </div>
+
+      {(loading || error) && (
+        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-400">
+          {loading ? "Loading live data" : error}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
-        {markets.map(([label, value]) => (
-          <article key={label} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-            <span className="block text-xs font-black text-zinc-400">{label}</span>
-            <strong className="mt-2 block text-lg text-zinc-50">{value}</strong>
+        {(markets?.quotes ?? []).map((quote) => (
+          <article key={quote.key} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
+            <span className="block text-xs font-black text-zinc-400">{quote.name}</span>
+            <strong className="mt-2 block text-lg text-zinc-50">
+              {quote.value ? `${quote.value}${quote.unit}` : "n/a"}
+            </strong>
+            {quote.error && <span className="mt-1 block text-xs text-red-300">{quote.error}</span>}
           </article>
         ))}
       </div>
-      <ActionButton
-        primary
-        icon={<Activity size={16} />}
-        onClick={() => eventBus.emit("command:send", { command: "markets" })}
-      >
-        Свежие рынки
-      </ActionButton>
+
+      <div className="grid grid-cols-3 gap-2 max-[520px]:grid-cols-1">
+        <ActionButton primary icon={<RefreshCw size={16} />} onClick={() => void refreshMarkets()}>
+          Refresh
+        </ActionButton>
+        <ActionButton
+          icon={<Activity size={16} />}
+          onClick={() => eventBus.emit("command:send", { command: "markets" })}
+        >
+          Chat report
+        </ActionButton>
+        <ActionButton
+          icon={<TrendingUp size={16} />}
+          onClick={() => eventBus.emit("command:send", { command: "market_brief" })}
+        >
+          Market brief
+        </ActionButton>
+      </div>
     </section>
   );
 }

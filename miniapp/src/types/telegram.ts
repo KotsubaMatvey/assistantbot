@@ -5,12 +5,16 @@ export type TelegramPayload =
 
 export type BotCommand =
   | "markets"
+  | "market_brief"
   | "status"
+  | "capability_center"
   | "agenda"
   | "lifestyle_context"
   | "compact"
   | "new"
   | "morning"
+  | "evening"
+  | "week"
   | "price_alerts"
   | "check_alerts"
   | "pantry"
@@ -18,15 +22,36 @@ export type BotCommand =
   | "pantry_deals"
   | "budget"
   | "budget_plan"
+  | "expense"
+  | "income"
+  | "accounts"
+  | "subscriptions"
+  | "cashflow"
   | "assistants"
   | "today"
   | "tasks"
+  | "people"
+  | "objects"
   | "recent"
   | "sources"
+  | "source_list"
+  | "source_sync"
+  | "memory_tree"
+  | "memory_profile"
+  | "weekly_summary"
+  | "tools"
   | "skills"
   | "assistant_capabilities";
 
 export type TelegramWebApp = {
+  initData?: string;
+  initDataUnsafe?: {
+    user?: {
+      id?: number;
+      first_name?: string;
+      username?: string;
+    };
+  };
   themeParams?: {
     bg_color?: string;
     text_color?: string;
