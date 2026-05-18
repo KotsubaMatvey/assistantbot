@@ -1,36 +1,51 @@
 import { Database } from "lucide-react";
 import { useState } from "react";
 import { ActionButton } from "../ActionButton";
-import { quickActions } from "../../domain/data";
+import { quickActions, shoppingMetrics } from "../../domain/data";
 import { eventBus } from "../../domain/events";
 
 export function ShoppingPanel() {
-  const [basket, setBasket] = useState("2x молоко 2.5 1 л\nяйца C1 10 шт\nсахар 1 кг");
+  const [basket, setBasket] = useState("2x milk 2.5 1L\neggs C1 10 pcs\nsugar 1kg");
 
   return (
-    <section className="grid gap-3" aria-label="Покупки">
-      <div className="grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-        <label className="text-xs font-black text-zinc-400" htmlFor="basket">
-          Список покупок
+    <section className="grid gap-4" aria-label="Pantry">
+      <section className="glass-panel p-4">
+        <div className="section-title">
+          <span>Pantry Status</span>
+          <span className="text-sm text-[var(--accent)]">basket ready</span>
+        </div>
+        <div className="mt-4 grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
+          {shoppingMetrics.map((metric) => (
+            <article className="metric-card" key={metric.label}>
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="glass-panel glass-panel-tight grid gap-3 p-3">
+        <label className="app-kicker" htmlFor="basket">
+          Grocery Run
         </label>
         <textarea
           id="basket"
-          className="min-h-32 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-50 outline-none"
+          className="surface-input min-h-36 p-3 text-sm"
           value={basket}
           onChange={(event) => setBasket(event.target.value)}
         />
         <div className="grid grid-cols-2 gap-2 max-[420px]:grid-cols-1">
           <ActionButton primary onClick={() => eventBus.emit("basket:compare", { text: basket })}>
-            Сравнить
+            Compare
           </ActionButton>
           <ActionButton
             icon={<Database size={16} />}
             onClick={() => eventBus.emit("command:send", { command: "pantry_deals" })}
           >
-            Докупки
+            Deals
           </ActionButton>
         </div>
-      </div>
+      </section>
 
       <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
         {quickActions.map((action) => (

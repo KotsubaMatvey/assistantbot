@@ -18,6 +18,7 @@ class AssistantContextItem:
     snippet: str
     citation: str
     source_type: str
+    source_id: str
     space: str
     tags: list[str] = field(default_factory=list)
 
@@ -51,7 +52,10 @@ def assistant_capabilities() -> list[AssistantCapability]:
         ),
         AssistantCapability("memory_tree", True, "Daily, weekly, project and profile summaries"),
         AssistantCapability("unified_sources", True, "RSS, URL and public GitHub source configs"),
+        AssistantCapability("source_scoped_memory", True, "Memory notes carry source_id filters"),
         AssistantCapability("object_system", True, "Local-first typed objects over memory"),
+        AssistantCapability("canonical_brain_pages", True, "People, project and decision pages"),
+        AssistantCapability("retrieval_eval_log", True, "Local JSONL search replay candidates"),
         AssistantCapability("communication_assistant", True, "People notes, follow-ups and drafts"),
         AssistantCapability("local_finance", True, "Budget, accounts, subscriptions and cashflow"),
         AssistantCapability("daily_command_center", True, "Morning, evening and weekly flows"),
@@ -81,6 +85,7 @@ def _context_item(result: MemorySearchResult) -> AssistantContextItem:
         snippet=result.snippet,
         citation=result.citation,
         source_type=result.source_type,
+        source_id=result.source_id,
         space=result.space,
         tags=result.tags,
     )

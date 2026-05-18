@@ -33,12 +33,12 @@ export type Action = {
 };
 
 export const tabs: { id: TabId; label: string; icon: ReactNode }[] = [
-  { id: "today", label: "Сегодня", icon: <CalendarCheck size={16} /> },
-  { id: "assistant", label: "Ассистент", icon: <Bot size={16} /> },
-  { id: "finance", label: "Финансы", icon: <Wallet size={16} /> },
-  { id: "memory", label: "Память", icon: <Brain size={16} /> },
-  { id: "shopping", label: "Покупки", icon: <ShoppingBasket size={16} /> },
-  { id: "markets", label: "Рынки", icon: <TrendingUp size={16} /> },
+  { id: "today", label: "Today", icon: <CalendarCheck size={16} /> },
+  { id: "assistant", label: "Agent", icon: <Bot size={16} /> },
+  { id: "finance", label: "Budget", icon: <Wallet size={16} /> },
+  { id: "memory", label: "Brain", icon: <Brain size={16} /> },
+  { id: "shopping", label: "Pantry", icon: <ShoppingBasket size={16} /> },
+  { id: "markets", label: "Markets", icon: <TrendingUp size={16} /> },
 ];
 
 export const todayMetrics: Metric[] = [
@@ -49,17 +49,17 @@ export const todayMetrics: Metric[] = [
 ];
 
 export const financeMetrics: Metric[] = [
-  { label: "Баланс", value: "/accounts" },
-  { label: "Расходы", value: "/expense" },
-  { label: "Доходы", value: "/income" },
-  { label: "Прогноз", value: "/cashflow" },
+  { label: "Balance", value: "/accounts" },
+  { label: "Expenses", value: "/expense" },
+  { label: "Income", value: "/income" },
+  { label: "Forecast", value: "/cashflow" },
 ];
 
 export const shoppingMetrics: Metric[] = [
-  { label: "Корзина", value: "5 товаров" },
-  { label: "Лучший маршрут", value: "2 магазина" },
-  { label: "Экономия", value: "312 ₽" },
-  { label: "Свежесть", value: "18 мин" },
+  { label: "Basket", value: "5 items" },
+  { label: "Best route", value: "2 stores" },
+  { label: "Savings", value: "312 RUB" },
+  { label: "Freshness", value: "18 min" },
 ];
 
 export const quickActions: Action[] = [

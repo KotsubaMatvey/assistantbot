@@ -132,6 +132,7 @@ class SourceStore:
                     note_type="source",
                     extra_tags=["source", "rss"],
                     source_type="rss",
+                    source_id=source.id,
                     source_url=source.url,
                     title=f"RSS source: {source.url}",
                 )
@@ -144,6 +145,7 @@ class SourceStore:
                     note_type="source",
                     extra_tags=["source", "web"],
                     source_type="web",
+                    source_id=source.id,
                     source_url=source.url,
                     title=page.title,
                 )
@@ -156,6 +158,7 @@ class SourceStore:
                     note_type="source",
                     extra_tags=["source", "github"],
                     source_type="github",
+                    source_id=source.id,
                     source_url=source.url,
                     title=f"GitHub source: {source.url}",
                 )

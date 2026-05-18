@@ -47,6 +47,7 @@ from app.services.object_store import (
 )
 from app.services.obsidian_memory import (
     ObsidianMemory,
+    format_memory_sync_result,
     parse_reminder_request,
     parse_space_prefix,
 )
@@ -208,6 +209,15 @@ async def memory_tree_handler(message: Message) -> None:
             user_id=message.from_user.id,
         )
     )
+
+
+@router.message(Command("memory_sync"))
+async def memory_sync_handler(message: Message) -> None:
+    if message.from_user is None:
+        return
+    memory = ObsidianMemory(get_settings().obsidian_vault_path)
+    result = memory.sync_user_memory(user_id=message.from_user.id)
+    await message.answer(format_memory_sync_result(result)[:3900])
 
 
 @router.message(Command("memory_profile"))

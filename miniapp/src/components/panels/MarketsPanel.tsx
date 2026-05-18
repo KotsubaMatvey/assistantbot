@@ -28,34 +28,39 @@ export function MarketsPanel() {
   const btc = markets?.quotes.find((quote) => quote.key === "btc");
 
   return (
-    <section className="grid gap-3" aria-label="Рынки">
-      <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-5">
-        <span className="flex items-center gap-2 text-sm font-black text-zinc-400">
+    <section className="grid gap-4" aria-label="Markets">
+      <section className="glass-panel p-5">
+        <span className="flex items-center gap-2 text-sm font-black text-[var(--muted)]">
           <TrendingUp size={18} />
           {btc?.name ?? "Bitcoin"}
         </span>
-        <strong className="mt-2 block text-4xl font-black leading-none text-zinc-50">
+        <strong className="mt-3 block text-5xl font-black leading-none text-white">
           {btc?.value ? `${btc.value}${btc.unit}` : "n/a"}
         </strong>
-        <em className="mt-2 block text-sm not-italic text-teal-300">
+        <em className="mt-3 block text-sm not-italic text-[var(--accent)]">
           {btc?.change_percent ? `${btc.change_percent}%` : markets?.risk_regime ?? "loading"}
         </em>
-      </div>
+      </section>
 
       {(loading || error) && (
-        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-400">
+        <div className="glass-panel glass-panel-tight p-3 text-sm text-[var(--muted)]">
           {loading ? "Loading live data" : error}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        {(markets?.quotes ?? []).map((quote) => (
-          <article key={quote.key} className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-            <span className="block text-xs font-black text-zinc-400">{quote.name}</span>
-            <strong className="mt-2 block text-lg text-zinc-50">
+        {(markets?.quotes ?? []).map((quote, index) => (
+          <article
+            key={quote.key}
+            className={index === 0 ? "record-row record-row-active" : "record-row"}
+          >
+            <span className="app-kicker">{quote.name}</span>
+            <strong className="mt-2 block text-lg text-white">
               {quote.value ? `${quote.value}${quote.unit}` : "n/a"}
             </strong>
-            {quote.error && <span className="mt-1 block text-xs text-red-300">{quote.error}</span>}
+            {quote.error && (
+              <span className="mt-1 block text-xs text-[var(--danger)]">{quote.error}</span>
+            )}
           </article>
         ))}
       </div>

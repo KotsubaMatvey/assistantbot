@@ -1,6 +1,6 @@
 import { CreditCard, Plus, ReceiptText, Repeat, TrendingUp, Wallet } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
-import { useState } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { ActionButton } from "../ActionButton";
 import { financeActions } from "../../domain/data";
 import type { MiniAppState } from "../../domain/api";
@@ -19,6 +19,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
   const [account, setAccount] = useState({ name: "", balance: "" });
   const [subscription, setSubscription] = useState({ name: "", amount: "" });
   const [receipt, setReceipt] = useState("");
+  const chartStyle = useMemo(() => budgetChartStyle(state?.budget.categories ?? []), [state]);
 
   async function submitTransaction(kind: "expense" | "income", event: FormEvent) {
     event.preventDefault();
@@ -62,21 +63,39 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
   }
 
   return (
-    <section className="grid gap-3" aria-label="Финансы">
+    <section className="grid gap-4" aria-label="Budget">
       {(loading || error) && (
-        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-400">
+        <div className="glass-panel glass-panel-tight p-3 text-sm text-[var(--muted)]">
           {loading ? "Loading live data" : error}
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
-        <MetricCard label="Баланс" value={state?.balance ?? "0.00"} />
-        <MetricCard label="Расходы" value={state?.expenses ?? "0.00"} />
-        <MetricCard label="Доходы" value={state?.income ?? "0.00"} />
-        <MetricCard label="Прогноз" value={state?.forecast ?? "0.00"} />
-      </div>
+      <section className="glass-panel grid grid-cols-[1fr_220px] gap-4 p-4 max-[680px]:grid-cols-1">
+        <div>
+          <div className="section-title">
+            <span>Budget Overview</span>
+            <span className="text-sm text-[var(--accent-2)]">{state?.month ?? "Current"}</span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <MetricCard label="Balance" value={state?.balance ?? "0.00"} />
+            <MetricCard label="Spent" value={state?.expenses ?? "0.00"} />
+            <MetricCard label="Income" value={state?.income ?? "0.00"} />
+            <MetricCard label="Forecast" value={state?.forecast ?? "0.00"} />
+          </div>
+        </div>
+        <div className="grid place-items-center">
+          <div className="relative size-44 rounded-full" style={chartStyle}>
+            <div className="absolute inset-10 grid place-items-center rounded-full bg-[var(--bg)] text-center">
+              <span className="app-kicker">Left</span>
+              <strong className="text-lg font-black text-white">
+                {state?.budget.remaining ?? "0.00"}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3">
+      <section className="glass-panel glass-panel-tight grid gap-3 p-3">
         <MoneyForm
           icon={<CreditCard size={16} />}
           title="Expense"
@@ -118,24 +137,21 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
           onSubmit={(event) => void submitSubscription(event)}
         />
         <form className="grid gap-2" onSubmit={(event) => void submitReceipt(event)}>
-          <label className="flex items-center gap-2 text-xs font-black uppercase text-zinc-400">
+          <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
             <ReceiptText size={16} />
             Receipt
           </label>
           <textarea
-            className="min-h-24 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-50 outline-none"
+            className="surface-input min-h-24 p-3 text-sm"
             value={receipt}
             onChange={(event) => setReceipt(event.target.value)}
           />
-          <button
-            className="flex min-h-10 items-center justify-center gap-2 rounded-lg border border-teal-300 bg-teal-300 px-3 text-sm font-black text-zinc-950"
-            type="submit"
-          >
+          <button className="action-button action-button-primary" type="submit">
             <Plus size={16} />
             Save receipt
           </button>
         </form>
-      </div>
+      </section>
 
       <div className="grid gap-2">
         {(state?.accounts ?? []).map((item) => (
@@ -172,9 +188,9 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-      <span className="block text-xs font-black text-zinc-400">{label}</span>
-      <strong className="mt-2 block text-lg leading-tight text-zinc-50">{value}</strong>
+    <article className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </article>
   );
 }
@@ -201,32 +217,31 @@ function MoneyForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="grid grid-cols-[118px_1fr_1fr_1.4fr_44px] gap-2 max-[720px]:grid-cols-1" onSubmit={onSubmit}>
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-zinc-400">
+    <form
+      className="grid grid-cols-[118px_1fr_1fr_1.4fr_46px] gap-2 max-[720px]:grid-cols-1"
+      onSubmit={onSubmit}
+    >
+      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         {icon}
         {title}
       </label>
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         inputMode="decimal"
         value={amount}
         onChange={(event) => onAmount(event.target.value)}
       />
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         value={category}
         onChange={(event) => onCategory(event.target.value)}
       />
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         value={note}
         onChange={(event) => onNote(event.target.value)}
       />
-      <button
-        className="grid min-h-10 place-items-center rounded-lg border border-teal-300 bg-teal-300 text-zinc-950"
-        type="submit"
-        aria-label={`Save ${title}`}
-      >
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Save ${title}`}>
         <Plus size={16} />
       </button>
     </form>
@@ -251,27 +266,23 @@ function PairForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="grid grid-cols-[118px_1fr_1fr_44px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-zinc-400">
+    <form className="grid grid-cols-[118px_1fr_1fr_46px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
+      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         {icon}
         {title}
       </label>
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         value={first}
         onChange={(event) => onFirst(event.target.value)}
       />
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         inputMode="decimal"
         value={second}
         onChange={(event) => onSecond(event.target.value)}
       />
-      <button
-        className="grid min-h-10 place-items-center rounded-lg border border-teal-300 bg-teal-300 text-zinc-950"
-        type="submit"
-        aria-label={`Save ${title}`}
-      >
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Save ${title}`}>
         <Plus size={16} />
       </button>
     </form>
@@ -280,12 +291,33 @@ function PairForm({
 
 function DataRow({ left, right, detail = "" }: { left: string; right: string; detail?: string }) {
   return (
-    <article className="flex items-center justify-between gap-4 rounded-lg border border-zinc-700 bg-zinc-900 p-3 max-[520px]:items-start max-[520px]:flex-col">
-      <div>
-        <strong className="block text-sm text-zinc-50">{left}</strong>
-        {detail && <span className="mt-1 block text-xs text-zinc-400">{detail}</span>}
+    <article className="record-row">
+      <div className="flex items-start justify-between gap-4 max-[520px]:flex-col">
+        <div className="min-w-0">
+          <strong className="block truncate text-sm text-white">{left}</strong>
+          {detail && <span className="muted-text mt-1 block truncate text-xs">{detail}</span>}
+        </div>
+        <b className="whitespace-nowrap text-[var(--accent)]">{right}</b>
       </div>
-      <b className="whitespace-nowrap text-teal-300">{right}</b>
     </article>
   );
+}
+
+function budgetChartStyle(categories: { amount: string }[]): CSSProperties {
+  const amounts = categories.map((category) => Number.parseFloat(category.amount) || 0);
+  const total = amounts.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) {
+    return {
+      background:
+        "conic-gradient(var(--accent) 0 65%, var(--accent-2) 65% 82%, #8f6cf0 82% 100%)",
+    };
+  }
+  let cursor = 0;
+  const colors = ["var(--accent)", "var(--accent-2)", "#8f6cf0", "#d3d3d3"];
+  const stops = amounts.map((amount, index) => {
+    const start = cursor;
+    cursor += (amount / total) * 100;
+    return `${colors[index % colors.length]} ${start.toFixed(1)}% ${cursor.toFixed(1)}%`;
+  });
+  return { background: `conic-gradient(${stops.join(", ")})` };
 }

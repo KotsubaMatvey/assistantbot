@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
+import time
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
@@ -62,6 +64,35 @@ DEFAULT_SPACE = "default"
 INDEX_DIR = ".assistantbot"
 INDEX_FILE = "memory-index.sqlite3"
 MAX_CHUNK_LENGTH = 1200
+RESOLVER_TEXT = """# Brain Resolver
+
+Use this order when filing memory:
+
+1. If it is about a person, update the person page.
+2. If it is about an active project, update the project page.
+3. If it records a choice, tradeoff, or conclusion, update decisions.
+4. If it came from RSS, URL, GitHub, or another import, keep source metadata.
+5. If none of the above fits, keep the raw note in notes/ and inbox.
+
+Raw notes are append-only evidence. Canonical brain pages summarize current state
+above the divider and keep an append-only timeline below it.
+"""
+SCHEMA_TEXT = """# Brain Schema
+
+Each canonical page uses two layers:
+
+- Current: the latest compiled state the assistant should read first.
+- Timeline: append-only evidence entries pointing back to raw notes.
+
+Raw notes keep YAML frontmatter with type, tags, space, source_type, source_id,
+source_url, status, checksum, created_at, and updated_at.
+
+Canonical directories:
+
+- users/<id>/brain/people/
+- users/<id>/brain/projects/
+- users/<id>/brain/decisions/
+"""
 
 
 @dataclass(frozen=True)
@@ -72,6 +103,7 @@ class MemoryNoteMetadata:
     status: str = "open"
     space: str = DEFAULT_SPACE
     source_type: str = "manual"
+    source_id: str = "manual"
     source_url: str | None = None
     title: str | None = None
     checksum: str = ""
@@ -88,6 +120,7 @@ class MemorySearchResult:
     tags: list[str] = field(default_factory=list)
     space: str = DEFAULT_SPACE
     source_type: str = "manual"
+    source_id: str = "manual"
     source_url: str | None = None
     title: str | None = None
     chunk_no: int = 0
@@ -95,6 +128,8 @@ class MemorySearchResult:
     @property
     def citation(self) -> str:
         parts = [self.title or self.path.name]
+        if self.source_id and self.source_id != "manual":
+            parts.append(f"source:{self.source_id}")
         if self.source_url:
             parts.append(self.source_url)
         parts.append(f"space:{self.space}")
@@ -168,14 +203,66 @@ class MemorySource:
     path: Path
     source_type: str
     title: str
+    source_id: str = "manual"
     source_url: str | None = None
     space: str = DEFAULT_SPACE
     checksum: str = ""
 
 
+@dataclass(frozen=True)
+class MemorySyncResult:
+    schema_files: int
+    indexed_markdown: int
+    indexed_objects: int
+    eval_log_path: Path
+
+
+def format_memory_sync_result(result: MemorySyncResult) -> str:
+    return "\n".join(
+        [
+            "Memory sync complete",
+            f"Schema files created: {result.schema_files}",
+            f"Markdown indexed: {result.indexed_markdown}",
+            f"Objects indexed: {result.indexed_objects}",
+            f"Retrieval eval log: {result.eval_log_path}",
+        ]
+    )
+
+
 class ObsidianMemory:
     def __init__(self, vault_path: str) -> None:
         self.vault_path = Path(vault_path).expanduser()
+
+    def ensure_brain_schema(self, *, user_id: int | None = None) -> list[Path]:
+        files = {
+            self.vault_path / "RESOLVER.md": RESOLVER_TEXT,
+            self.vault_path / "schema.md": SCHEMA_TEXT,
+            self.vault_path / "brain" / "people" / "README.md": (
+                "# People\n\nOne canonical page per person. Use aliases and timeline entries "
+                "instead of duplicate pages.\n"
+            ),
+            self.vault_path / "brain" / "projects" / "README.md": (
+                "# Projects\n\nActive workstreams with tasks, decisions, and open questions.\n"
+            ),
+            self.vault_path / "brain" / "decisions" / "README.md": (
+                "# Decisions\n\nChoices, tradeoffs, risks, and follow-up state.\n"
+            ),
+            self.vault_path / "brain" / "sources" / "README.md": (
+                "# Sources\n\nImported RSS, URL, GitHub, and other external material.\n"
+            ),
+        }
+        if user_id is not None:
+            files[self._brain_dir(user_id) / "README.md"] = (
+                "# User Brain\n\nCanonical pages generated from raw notes for this user.\n"
+            )
+        written: list[Path] = []
+        for path, text in files.items():
+            if path.exists():
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+            written.append(path)
+        return written
 
     def remember_user_note(
         self,
@@ -188,6 +275,7 @@ class ObsidianMemory:
         reminder_at: datetime | None = None,
         space: str | None = None,
         source_type: str = "manual",
+        source_id: str | None = None,
         source_url: str | None = None,
         title: str | None = None,
     ) -> Path:
@@ -196,7 +284,9 @@ class ObsidianMemory:
             raise ValueError("memory text is empty")
 
         created = created_at or datetime.now(UTC)
+        self.ensure_brain_schema(user_id=user_id)
         effective_space = _normalize_space(space or self.get_active_space(user_id))
+        effective_source_id = _effective_source_id(source_type, source_id, source_url)
         checksum = _checksum(clean_text, source_url=source_url)
         duplicate = self._find_duplicate(user_id=user_id, checksum=checksum)
         if duplicate is not None:
@@ -222,6 +312,7 @@ class ObsidianMemory:
                 status="open",
                 space=effective_space,
                 source_type=source_type,
+                source_id=effective_source_id,
                 source_url=source_url,
                 title=title,
                 checksum=checksum,
@@ -233,6 +324,17 @@ class ObsidianMemory:
         self._append_inbox_entry(user_id, created, clean_text, path)
         if effective_type in {"fact", "preference", "task", "link", "important", "reminder"}:
             self._append_profile_fact(user_id, clean_text)
+        self._update_canonical_pages(
+            user_id=user_id,
+            note_path=path,
+            note_type=effective_type,
+            tags=tags,
+            body=clean_text,
+            title=title,
+            created_at=created,
+            source_type=source_type,
+            source_id=effective_source_id,
+        )
         self._index_note(user_id=user_id, path=path)
         ObjectStore(str(self.vault_path)).index_markdown_note(user_id=user_id, path=path)
         return path
@@ -277,6 +379,7 @@ class ObsidianMemory:
         limit: int = 5,
         space: str | None = None,
     ) -> list[MemorySearchResult]:
+        started = time.perf_counter()
         tokens = _tokens(query)
         expanded = _expand_terms(tokens)
         if not expanded:
@@ -297,7 +400,16 @@ class ObsidianMemory:
             limit=search_limit,
             space=space,
         )
-        return _merge_search_results(indexed_results, semantic_results, limit)
+        results = _merge_search_results(indexed_results, semantic_results, limit)
+        self._log_retrieval_eval(
+            user_id=user_id,
+            query=query,
+            results=results,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            indexed_count=len(indexed_results),
+            semantic_count=len(semantic_results),
+        )
+        return results
 
     def _semantic_search(
         self,
@@ -336,6 +448,7 @@ class ObsidianMemory:
                     tags=metadata.tags,
                     space=metadata.space,
                     source_type=metadata.source_type,
+                    source_id=metadata.source_id,
                     source_url=metadata.source_url,
                     title=metadata.title,
                 )
@@ -417,6 +530,7 @@ class ObsidianMemory:
                     tags=metadata.tags,
                     space=metadata.space,
                     source_type=metadata.source_type,
+                    source_id=metadata.source_id,
                     source_url=metadata.source_url,
                     title=metadata.title,
                 )
@@ -488,6 +602,7 @@ class ObsidianMemory:
                     tags=metadata.tags,
                     space=metadata.space,
                     source_type=metadata.source_type,
+                    source_id=metadata.source_id,
                     source_url=metadata.source_url,
                     title=metadata.title,
                 )
@@ -507,6 +622,7 @@ class ObsidianMemory:
                     path=path,
                     source_type=metadata.source_type,
                     title=metadata.title or path.name,
+                    source_id=metadata.source_id,
                     source_url=metadata.source_url,
                     space=metadata.space,
                     checksum=metadata.checksum,
@@ -537,6 +653,9 @@ class ObsidianMemory:
             if filters.get("tag") and filters["tag"] not in metadata.tags:
                 continue
             if filters.get("space") and metadata.space != _normalize_space(filters["space"]):
+                continue
+            source_filter = filters.get("source") or filters.get("source_id")
+            if source_filter and metadata.source_id != _normalize_source_id(source_filter):
                 continue
             after = filters.get("after")
             if after and (
@@ -833,6 +952,24 @@ class ObsidianMemory:
             count += 1
         return count
 
+    def sync_user_memory(self, *, user_id: int) -> MemorySyncResult:
+        schema_files = self.ensure_brain_schema(user_id=user_id)
+        self._clear_user_index(user_id=user_id)
+        object_store = ObjectStore(str(self.vault_path))
+        indexed_markdown = 0
+        indexed_objects = 0
+        for path, _ in self._iter_user_sync_markdown(user_id):
+            self._index_note(user_id=user_id, path=path)
+            indexed_markdown += 1
+            if object_store.index_markdown_note(user_id=user_id, path=path) is not None:
+                indexed_objects += 1
+        return MemorySyncResult(
+            schema_files=len(schema_files),
+            indexed_markdown=indexed_markdown,
+            indexed_objects=indexed_objects,
+            eval_log_path=self._retrieval_eval_path(user_id),
+        )
+
     def _find_duplicate(self, *, user_id: int, checksum: str) -> Path | None:
         if not checksum:
             return None
@@ -841,6 +978,80 @@ class ObsidianMemory:
             if metadata.checksum == checksum:
                 return path
         return None
+
+    def _update_canonical_pages(
+        self,
+        *,
+        user_id: int,
+        note_path: Path,
+        note_type: str,
+        tags: list[str],
+        body: str,
+        title: str | None,
+        created_at: datetime,
+        source_type: str,
+        source_id: str,
+    ) -> None:
+        for kind, subject in _canonical_targets(
+            note_type=note_type,
+            tags=tags,
+            title=title,
+            body=body,
+        ):
+            directory = self._brain_dir(user_id) / _canonical_directory(kind)
+            directory.mkdir(parents=True, exist_ok=True)
+            page_path = directory / f"{_slug(subject)}.md"
+            page_text = _canonical_page_text(
+                existing=page_path.read_text(encoding="utf-8", errors="ignore")
+                if page_path.exists()
+                else "",
+                kind=kind,
+                subject=subject,
+                body=body,
+                note_path=note_path,
+                vault_path=self.vault_path,
+                created_at=created_at,
+                source_type=source_type,
+                source_id=source_id,
+                user_id=user_id,
+            )
+            page_path.write_text(page_text, encoding="utf-8")
+
+    def _log_retrieval_eval(
+        self,
+        *,
+        user_id: int,
+        query: str,
+        results: list[MemorySearchResult],
+        latency_ms: int,
+        indexed_count: int,
+        semantic_count: int,
+    ) -> None:
+        try:
+            path = self._retrieval_eval_path(user_id)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "created_at": datetime.now(UTC).isoformat(),
+                "query": query,
+                "latency_ms": latency_ms,
+                "indexed_count": indexed_count,
+                "semantic_count": semantic_count,
+                "results": [
+                    {
+                        "path": str(result.path.relative_to(self.vault_path))
+                        if result.path.is_relative_to(self.vault_path)
+                        else str(result.path),
+                        "score": result.score,
+                        "source_id": result.source_id,
+                        "source_type": result.source_type,
+                    }
+                    for result in results
+                ],
+            }
+            with path.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+        except OSError:
+            return
 
     def _index_note(self, *, user_id: int, path: Path) -> None:
         if not path.exists():
@@ -859,9 +1070,9 @@ class ObsidianMemory:
                         """
                         insert into memory_fts(
                             path, chunk_no, user_id, space, note_type, tags, source_type,
-                            source_url, title, status, body
+                            source_id, source_url, title, status, body
                         )
-                        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(path),
@@ -871,6 +1082,7 @@ class ObsidianMemory:
                             metadata.note_type,
                             ",".join(metadata.tags),
                             metadata.source_type,
+                            metadata.source_id,
                             metadata.source_url or "",
                             metadata.title or path.name,
                             metadata.status,
@@ -880,10 +1092,10 @@ class ObsidianMemory:
                 connection.execute(
                     """
                     insert or replace into memory_sources(
-                        path, user_id, space, note_type, source_type, source_url, title,
+                        path, user_id, space, note_type, source_type, source_id, source_url, title,
                         checksum, status, created_at, updated_at
                     )
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(path),
@@ -891,6 +1103,7 @@ class ObsidianMemory:
                         metadata.space,
                         metadata.note_type,
                         metadata.source_type,
+                        metadata.source_id,
                         metadata.source_url,
                         metadata.title or path.name,
                         metadata.checksum,
@@ -926,8 +1139,9 @@ class ObsidianMemory:
                 rows = connection.execute(
                     f"""
                     select path, bm25(memory_fts) as rank,
-                           snippet(memory_fts, 10, '', '', '...', 24),
-                           note_type, tags, space, source_type, source_url, title, chunk_no
+                           snippet(memory_fts, 11, '', '', '...', 24),
+                           note_type, tags, space, source_type, source_id,
+                           source_url, title, chunk_no
                     from memory_fts
                     where memory_fts match ? and user_id = ?{space_filter}
                     order by rank
@@ -950,9 +1164,10 @@ class ObsidianMemory:
                     tags=tags,
                     space=str(row[5]),
                     source_type=str(row[6]),
-                    source_url=str(row[7]) or None,
-                    title=str(row[8]) or None,
-                    chunk_no=int(row[9]),
+                    source_id=str(row[7]) or "manual",
+                    source_url=str(row[8]) or None,
+                    title=str(row[9]) or None,
+                    chunk_no=int(row[10]),
                 )
             )
         return results
@@ -977,12 +1192,25 @@ class ObsidianMemory:
             if own_connection and "active_connection" in locals():
                 active_connection.close()
 
+    def _clear_user_index(self, *, user_id: int) -> None:
+        try:
+            with self._connect_index() as connection:
+                self._prepare_index(connection)
+                connection.execute("delete from memory_fts where user_id = ?", (user_id,))
+                connection.execute("delete from memory_sources where user_id = ?", (user_id,))
+        except sqlite3.Error:
+            return
+
     def _connect_index(self) -> sqlite3.Connection:
         directory = self.vault_path / INDEX_DIR
         directory.mkdir(parents=True, exist_ok=True)
         return sqlite3.connect(directory / INDEX_FILE)
 
     def _prepare_index(self, connection: sqlite3.Connection) -> None:
+        if _sqlite_table_exists(connection, "memory_fts") and "source_id" not in _sqlite_columns(
+            connection, "memory_fts"
+        ):
+            connection.execute("drop table memory_fts")
         connection.execute(
             """
             create virtual table if not exists memory_fts using fts5(
@@ -993,6 +1221,7 @@ class ObsidianMemory:
                 note_type unindexed,
                 tags,
                 source_type unindexed,
+                source_id unindexed,
                 source_url unindexed,
                 title,
                 status unindexed,
@@ -1008,6 +1237,7 @@ class ObsidianMemory:
                 space text not null,
                 note_type text not null,
                 source_type text not null,
+                source_id text not null default 'manual',
                 source_url text,
                 title text,
                 checksum text,
@@ -1017,6 +1247,10 @@ class ObsidianMemory:
             )
             """
         )
+        if "source_id" not in _sqlite_columns(connection, "memory_sources"):
+            connection.execute(
+                "alter table memory_sources add column source_id text not null default 'manual'"
+            )
 
     def _set_frontmatter_value(self, path: Path, *, key: str, value: str) -> None:
         text = path.read_text(encoding="utf-8")
@@ -1269,6 +1503,7 @@ class ObsidianMemory:
         return [
             (path, path.read_text(encoding="utf-8", errors="ignore"))
             for path in directory.rglob("*.md")
+            if path.relative_to(directory).parts[:1] != ("brain",)
         ]
 
     def _iter_user_notes(self, user_id: int) -> list[tuple[Path, str]]:
@@ -1280,8 +1515,24 @@ class ObsidianMemory:
             for path in directory.glob("*.md")
         ]
 
+    def _iter_user_sync_markdown(self, user_id: int) -> list[tuple[Path, str]]:
+        directory = self._user_dir(user_id)
+        if not directory.exists():
+            return []
+        allowed_roots = {"notes", "brain"}
+        items: list[tuple[Path, str]] = []
+        for path in directory.rglob("*.md"):
+            relative = path.relative_to(directory)
+            if not relative.parts or relative.parts[0] not in allowed_roots:
+                continue
+            items.append((path, path.read_text(encoding="utf-8", errors="ignore")))
+        return items
+
     def _user_dir(self, user_id: int) -> Path:
         return self.vault_path / "users" / str(user_id)
+
+    def _brain_dir(self, user_id: int) -> Path:
+        return self._user_dir(user_id) / "brain"
 
     def _user_notes_dir(self, user_id: int) -> Path:
         return self._user_dir(user_id) / "notes"
@@ -1294,6 +1545,9 @@ class ObsidianMemory:
 
     def _active_space_path(self, user_id: int) -> Path:
         return self._user_dir(user_id) / "active-space.txt"
+
+    def _retrieval_eval_path(self, user_id: int) -> Path:
+        return self._user_dir(user_id) / "evals" / "retrieval.jsonl"
 
 
 def classify_note(text: str) -> MemoryNoteMetadata:
@@ -1344,6 +1598,7 @@ def _markdown_note(
     status: str = "open",
     space: str = DEFAULT_SPACE,
     source_type: str = "manual",
+    source_id: str = "manual",
     source_url: str | None = None,
     title: str | None = None,
     checksum: str = "",
@@ -1360,6 +1615,7 @@ def _markdown_note(
         f"status: {status}",
         f"space: {space}",
         f"source_type: {source_type}",
+        f"source_id: {source_id}",
         f"checksum: {checksum}",
     ]
     if title:
@@ -1384,6 +1640,7 @@ def _parse_frontmatter(text: str) -> MemoryNoteMetadata:
     status = "open"
     space = DEFAULT_SPACE
     source_type = "manual"
+    source_id = "manual"
     source_url: str | None = None
     title: str | None = None
     checksum = ""
@@ -1411,12 +1668,16 @@ def _parse_frontmatter(text: str) -> MemoryNoteMetadata:
             space = _normalize_space(line.partition(":")[2].strip())
         if line.startswith("source_type:"):
             source_type = line.partition(":")[2].strip() or "manual"
+        if line.startswith("source_id:"):
+            source_id = _normalize_source_id(line.partition(":")[2].strip() or "manual")
         if line.startswith("source_url:"):
             source_url = _unquote_frontmatter_value(line.partition(":")[2].strip()) or None
         if line.startswith("title:"):
             title = _unquote_frontmatter_value(line.partition(":")[2].strip()) or None
         if line.startswith("checksum:"):
             checksum = line.partition(":")[2].strip()
+    if source_id == "manual":
+        source_id = _effective_source_id(source_type, None, source_url)
     return MemoryNoteMetadata(
         note_type=note_type,
         tags=tags,
@@ -1424,6 +1685,7 @@ def _parse_frontmatter(text: str) -> MemoryNoteMetadata:
         status=status,
         space=space,
         source_type=source_type,
+        source_id=source_id,
         source_url=source_url,
         title=title,
         checksum=checksum,
@@ -1475,21 +1737,49 @@ def _merge_search_results(
     limit: int,
 ) -> list[MemorySearchResult]:
     merged: dict[Path, MemorySearchResult] = {}
-    for result in indexed_results:
-        boosted = replace(result, score=result.score + 1000)
-        existing = merged.get(result.path)
-        if existing is None or boosted.score > existing.score:
-            merged[result.path] = boosted
+    scores: dict[Path, float] = {}
+    for weight, results in ((1.4, indexed_results), (1.0, semantic_results)):
+        for rank, result in enumerate(results, start=1):
+            scores[result.path] = scores.get(result.path, 0.0) + weight * (1000 / (60 + rank))
+            if result.path not in merged or (
+                result in indexed_results and merged[result.path] not in indexed_results
+            ):
+                merged[result.path] = result
 
-    for result in semantic_results:
-        existing = merged.get(result.path)
-        if existing is None:
-            merged[result.path] = result
-            continue
-        merged[result.path] = replace(existing, score=existing.score + result.score)
-
-    ranked = sorted(merged.values(), key=lambda result: (-result.score, str(result.path)))
+    ranked = sorted(
+        (
+            replace(result, score=int(scores[result.path] + _search_result_boost(result)))
+            for result in merged.values()
+        ),
+        key=lambda result: (-result.score, str(result.path)),
+    )
     return ranked[:limit]
+
+
+def _search_result_boost(result: MemorySearchResult) -> int:
+    boost = 0
+    tags = set(result.tags)
+    if "important" in tags:
+        boost += 80
+    if result.note_type in {"person", "decision"}:
+        boost += 40
+    if result.note_type in {"task", "reminder"} and "done" not in tags:
+        boost += 30
+    if result.source_type not in {"", "manual", "reminder"}:
+        boost += 10
+    if result.path.exists():
+        metadata = _parse_frontmatter(result.path.read_text(encoding="utf-8", errors="ignore"))
+        current = datetime.now(UTC)
+        updated = metadata.updated_at or metadata.created_at
+        if updated is not None:
+            age_days = max(0, (current - updated).days)
+            if age_days <= 1:
+                boost += 50
+            elif age_days <= 7:
+                boost += 30
+            elif age_days <= 30:
+                boost += 10
+    return boost
 
 
 def _semantic_vector(text: str) -> Counter[str]:
@@ -1622,16 +1912,181 @@ def _normalize_text(text: str) -> str:
     return text.lower().replace("ё", "е")
 
 
+def _normalize_source_id(source_id: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", source_id.strip().lower()).strip("-")
+    return normalized or "manual"
+
+
+def _slug(text: str) -> str:
+    raw = re.sub(r"[^\w-]+", "-", text.strip().lower(), flags=re.UNICODE)
+    return raw.strip("-") or "item"
+
+
+def _effective_source_id(source_type: str, source_id: str | None, source_url: str | None) -> str:
+    if source_id:
+        return _normalize_source_id(source_id)
+    if source_url:
+        digest = hashlib.sha1(source_url.encode("utf-8")).hexdigest()[:8]
+        return _normalize_source_id(f"{source_type}-{digest}")
+    return "manual"
+
+
+def _sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        "select name from sqlite_master where type in ('table', 'virtual table') and name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _sqlite_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    try:
+        return {str(row[1]) for row in connection.execute(f"pragma table_info({table_name})")}
+    except sqlite3.Error:
+        return set()
+
+
 def _parse_search_filters(query: str) -> tuple[str, dict[str, str]]:
     filters: dict[str, str] = {}
     terms = []
     for part in query.split():
         key, separator, value = part.partition(":")
-        if separator and key in {"type", "tag", "space", "after"} and value:
+        if separator and key in {"type", "tag", "space", "after", "source", "source_id"} and value:
             filters[key] = value.strip()
             continue
         terms.append(part)
     return " ".join(terms).strip(), filters
+
+
+def _canonical_targets(
+    *,
+    note_type: str,
+    tags: list[str],
+    title: str | None,
+    body: str,
+) -> list[tuple[str, str]]:
+    targets: list[tuple[str, str]] = []
+    if note_type == "person":
+        person = _person_subject(title=title, body=body)
+        if person:
+            targets.append(("person", person))
+    if note_type == "decision":
+        decision = title or _first_sentence(body, max_length=80)
+        if decision:
+            targets.append(("decision", decision))
+    if note_type == "project":
+        project = title or _first_sentence(body, max_length=80)
+        if project:
+            targets.append(("project", project))
+    for tag in tags:
+        if tag.startswith("project-"):
+            targets.append(("project", tag))
+    deduped: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for kind, subject in targets:
+        key = (kind, _slug(subject))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append((kind, subject))
+    return deduped
+
+
+def _person_subject(*, title: str | None, body: str) -> str:
+    if title and title.lower().startswith("person:"):
+        return title.partition(":")[2].strip()
+    for line in body.splitlines():
+        clean = line.strip()
+        if clean.lower().startswith("person:"):
+            return clean.partition(":")[2].strip()
+    return title or ""
+
+
+def _canonical_directory(kind: str) -> str:
+    if kind == "person":
+        return "people"
+    if kind == "decision":
+        return "decisions"
+    return f"{kind}s"
+
+
+def _canonical_page_text(
+    *,
+    existing: str,
+    kind: str,
+    subject: str,
+    body: str,
+    note_path: Path,
+    vault_path: Path,
+    created_at: datetime,
+    source_type: str,
+    source_id: str,
+    user_id: int,
+) -> str:
+    relative_note = note_path.relative_to(vault_path).as_posix()
+    title = f"{kind.title()}: {subject}"
+    summary = _first_sentence(body, max_length=220)
+    timeline = _existing_timeline(existing)
+    timeline_entry = (
+        f"- {created_at.date().isoformat()} | {source_type} | source:{source_id} | "
+        f"[[{relative_note}]] | {summary}"
+    )
+    if relative_note not in timeline:
+        timeline = f"{timeline.rstrip()}\n{timeline_entry}\n".lstrip()
+    frontmatter = _markdown_note(
+        note_type=kind,
+        user_id=user_id,
+        created_at=created_at,
+        tags=["pricebot", "memory", "canonical", kind],
+        body="",
+        status="open",
+        space=DEFAULT_SPACE,
+        source_type=source_type,
+        source_id=source_id,
+        title=title,
+        updated_at=created_at,
+    ).split("---", 2)[1].strip()
+    return "\n".join(
+        [
+            "---",
+            frontmatter,
+            "---",
+            "",
+            f"# {title}",
+            "",
+            "## Current",
+            f"- Latest signal: {summary}",
+            f"- Source note: [[{relative_note}]]",
+            f"- Source: {source_type}; source_id: {source_id}",
+            f"- Updated: {created_at.isoformat()}",
+            "",
+            "## Open Threads",
+            "- [No open threads yet]",
+            "",
+            "---",
+            "",
+            "## Timeline",
+            timeline.rstrip(),
+            "",
+        ]
+    )
+
+
+def _existing_timeline(text: str) -> str:
+    marker = "## Timeline"
+    if marker not in text:
+        return ""
+    return text.split(marker, 1)[1].strip()
+
+
+def _first_sentence(text: str, max_length: int = 180) -> str:
+    clean = " ".join(text.split())
+    if not clean:
+        return "empty note"
+    sentence_end = clean.find(". ")
+    if 0 < sentence_end < max_length:
+        return clean[: sentence_end + 1]
+    return clean[:max_length].rstrip() + ("..." if len(clean) > max_length else "")
 
 
 def _decision_note_body(prompt: str, related: list[MemorySearchResult]) -> str:

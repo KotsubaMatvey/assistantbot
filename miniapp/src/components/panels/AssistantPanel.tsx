@@ -10,46 +10,50 @@ const states: { state: AssistantState; label: string }[] = [
   { state: "thinking", label: "Context" },
   { state: "happy", label: "Synced" },
   { state: "alert", label: "Signal" },
-  { state: "shopping", label: "Shopping" },
+  { state: "shopping", label: "Pantry" },
   { state: "sad", label: "Overload" },
   { state: "working", label: "Working" },
 ];
 
 export function AssistantPanel() {
-  const [prompt, setPrompt] = useState("что важно сейчас?");
+  const [prompt, setPrompt] = useState("what matters now?");
 
   return (
-    <section className="grid gap-3" aria-label="Ассистент">
-      <div className="grid gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-        <label className="text-xs font-black text-zinc-400" htmlFor="pixelPrompt">
-          Команда помощнику
-        </label>
-        <div className="grid grid-cols-[1fr_108px] gap-2 max-[420px]:grid-cols-1">
+    <section className="grid gap-4" aria-label="Agent">
+      <section className="glass-panel p-4">
+        <div className="section-title">
+          <span>Action Console</span>
+          <span className="text-sm text-[var(--accent)]">operator mode</span>
+        </div>
+        <div className="mt-4 grid grid-cols-[1fr_108px] gap-2 max-[420px]:grid-cols-1">
           <input
             id="pixelPrompt"
-            className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-50 outline-none"
+            className="surface-input p-3 text-sm"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
           />
           <ActionButton
+            primary
             icon={<Send size={16} />}
             onClick={() => eventBus.emit("assistant:prompt", { text: prompt })}
           >
             Send
           </ActionButton>
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
-        {states.map((item) => (
-          <ActionButton
-            key={item.state}
-            onClick={() => eventBus.emit("assistant:set-state", { state: item.state })}
-          >
-            {item.label}
-          </ActionButton>
-        ))}
-      </div>
+      <section className="glass-panel glass-panel-tight p-3">
+        <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
+          {states.map((item) => (
+            <ActionButton
+              key={item.state}
+              onClick={() => eventBus.emit("assistant:set-state", { state: item.state })}
+            >
+              {item.label}
+            </ActionButton>
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-2 gap-2">
         {assistantActions.map((action) => (

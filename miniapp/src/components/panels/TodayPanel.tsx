@@ -1,4 +1,12 @@
-import { Bell, ListChecks, NotebookPen, Plus, RefreshCw, Users } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  ListChecks,
+  NotebookPen,
+  Plus,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useState } from "react";
 import { ActionButton } from "../ActionButton";
@@ -19,6 +27,8 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
   const [noteText, setNoteText] = useState("");
   const [reminderText, setReminderText] = useState("");
   const [person, setPerson] = useState({ name: "", note: "" });
+  const today = new Date();
+  const activeDay = today.getDate();
 
   async function submitTask(event: FormEvent) {
     event.preventDefault();
@@ -59,9 +69,90 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
     setPerson({ name: "", note: "" });
   }
 
+  const agendaItems = [
+    ...(state?.reminders ?? []).map((item) => ({
+      id: item.id,
+      title: item.snippet,
+      detail: item.due_at,
+      type: "Reminder",
+    })),
+    ...(state?.tasks ?? []).map((item) => ({
+      id: item.id,
+      title: item.snippet,
+      detail: item.tags.slice(0, 3).join(", ") || "Task",
+      type: "Task",
+    })),
+  ].slice(0, 6);
+
   return (
-    <section className="grid gap-3" aria-label="Сегодня">
+    <section className="grid gap-4" aria-label="Today">
       <StatusStrip loading={loading} error={error} onRefresh={onRefresh} />
+
+      <div className="grid grid-cols-[0.85fr_1.15fr] gap-3 max-[680px]:grid-cols-1">
+        <section className="glass-panel glass-panel-tight p-4">
+          <div className="section-title">
+            <span>Agenda</span>
+            <CalendarDays size={20} className="text-[var(--accent)]" />
+          </div>
+          <div className="mt-4 grid grid-cols-7 gap-2 text-center text-sm font-black">
+            {["M", "T", "W", "T", "F", "S", "S"].map((day) => (
+              <span key={day} className="dim-text">
+                {day}
+              </span>
+            ))}
+            {Array.from({ length: 35 }, (_, index) => {
+              const day = index + 1;
+              return (
+                <span
+                  key={day}
+                  className={
+                    day === activeDay
+                      ? "rounded-xl bg-[var(--accent)] py-2 text-zinc-950 shadow-[0_0_18px_rgba(0,196,180,0.42)]"
+                      : "py-2 text-zinc-100"
+                  }
+                >
+                  {day <= 31 ? day : ""}
+                </span>
+              );
+            })}
+          </div>
+          <p className="muted-text mt-4 text-sm leading-5">{state?.agenda || state?.digest}</p>
+        </section>
+
+        <section className="glass-panel glass-panel-tight p-4">
+          <div className="section-title">
+            <span>Task</span>
+            <span className="text-sm text-[var(--accent)]">{agendaItems.length}</span>
+          </div>
+          <div className="mt-4 grid gap-2">
+            {agendaItems.map((item, index) => (
+              <article
+                key={`${item.type}-${item.id}`}
+                className={index === 0 ? "record-row record-row-active" : "record-row"}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="app-kicker">{item.type}</span>
+                    <strong className="mt-1 block truncate text-base text-white">
+                      {item.title}
+                    </strong>
+                    <span className="muted-text mt-1 block truncate text-sm">{item.detail}</span>
+                  </div>
+                  <span className="muted-text whitespace-nowrap text-sm">
+                    {index === 0 ? "now" : "next"}
+                  </span>
+                </div>
+              </article>
+            ))}
+            {!loading && agendaItems.length === 0 && (
+              <article className="record-row">
+                <strong className="block text-base text-white">No scheduled items</strong>
+                <span className="muted-text mt-1 block text-sm">Capture a task or reminder.</span>
+              </article>
+            )}
+          </div>
+        </section>
+      </div>
 
       <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
         <MetricCard label="Tasks" value={String(state?.tasks.length ?? 0)} />
@@ -70,27 +161,7 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
         <MetricCard label="Focus" value={String(state?.focus.length ?? 0)} />
       </div>
 
-      <div className="grid gap-2">
-        {(state?.focus ?? []).slice(0, 5).map((item) => (
-          <article
-            key={`${item.type}-${item.detail}-${item.title}`}
-            className="grid grid-cols-[86px_1fr] items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3"
-          >
-            <span className="text-xs font-black uppercase text-teal-300">{item.type}</span>
-            <div>
-              <strong className="block text-sm text-zinc-50">{item.title}</strong>
-              <span className="mt-1 block text-xs text-zinc-400">{item.detail}</span>
-            </div>
-          </article>
-        ))}
-        {!loading && !state?.focus.length && (
-          <article className="rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-400">
-            Focus block empty
-          </article>
-        )}
-      </div>
-
-      <div className="grid gap-2 rounded-lg border border-zinc-700 bg-zinc-900 p-3">
+      <section className="glass-panel glass-panel-tight grid gap-2 p-3">
         <QuickForm
           icon={<ListChecks size={16} />}
           value={taskText}
@@ -113,7 +184,7 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
           onSubmit={submitReminder}
         />
         <PersonForm person={person} onChange={setPerson} onSubmit={submitPerson} />
-      </div>
+      </section>
 
       <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
         {todayActions.map((action) => (
@@ -141,26 +212,25 @@ function PersonForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="grid grid-cols-[94px_1fr_1.4fr_44px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-zinc-400">
+    <form
+      className="grid grid-cols-[94px_1fr_1.4fr_46px] gap-2 max-[620px]:grid-cols-1"
+      onSubmit={onSubmit}
+    >
+      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         <Users size={16} />
         Person
       </label>
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         value={person.name}
         onChange={(event) => onChange({ ...person, name: event.target.value })}
       />
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         value={person.note}
         onChange={(event) => onChange({ ...person, note: event.target.value })}
       />
-      <button
-        className="grid min-h-10 place-items-center rounded-lg border border-teal-300 bg-teal-300 text-zinc-950"
-        type="submit"
-        aria-label="Add Person"
-      >
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label="Add Person">
         <Plus size={16} />
       </button>
     </form>
@@ -169,9 +239,9 @@ function PersonForm({
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className="rounded-lg border border-zinc-700 bg-zinc-900 p-3">
-      <span className="block text-xs font-black text-zinc-400">{label}</span>
-      <strong className="mt-2 block text-lg leading-tight text-zinc-50">{value}</strong>
+    <article className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </article>
   );
 }
@@ -190,21 +260,17 @@ function QuickForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="grid grid-cols-[94px_1fr_44px] gap-2 max-[520px]:grid-cols-1" onSubmit={onSubmit}>
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-zinc-400">
+    <form className="grid grid-cols-[94px_1fr_46px] gap-2 max-[520px]:grid-cols-1" onSubmit={onSubmit}>
+      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         {icon}
         {label}
       </label>
       <input
-        className="min-w-0 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-50 outline-none"
+        className="surface-input px-3 py-2 text-sm"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-      <button
-        className="grid min-h-10 place-items-center rounded-lg border border-teal-300 bg-teal-300 text-zinc-950"
-        type="submit"
-        aria-label={`Add ${label}`}
-      >
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Add ${label}`}>
         <Plus size={16} />
       </button>
     </form>
@@ -224,14 +290,9 @@ function StatusStrip({
     return null;
   }
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm text-zinc-400">
+    <div className="glass-panel glass-panel-tight flex items-center justify-between gap-3 p-3 text-sm text-[var(--muted)]">
       <span>{loading ? "Loading live data" : error}</span>
-      <button
-        className="grid size-9 place-items-center rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-50"
-        type="button"
-        onClick={() => void onRefresh()}
-        aria-label="Refresh"
-      >
+      <button className="icon-button !h-9 !w-9" type="button" onClick={() => void onRefresh()}>
         <RefreshCw size={15} />
       </button>
     </div>

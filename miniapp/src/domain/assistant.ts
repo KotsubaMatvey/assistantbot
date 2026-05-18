@@ -15,38 +15,38 @@ export type AssistantStateMeta = {
 
 export const assistantStates: Record<AssistantState, AssistantStateMeta> = {
   idle: {
-    kicker: "Idle",
-    title: "Готов к контексту",
-    copy: "Сохраняю мысли, задачи, решения и ссылки в second brain.",
+    kicker: "System ready",
+    title: "Brain online",
+    copy: "Captures notes, tasks, people, sources, and decisions into the local second brain.",
   },
   thinking: {
-    kicker: "Thinking",
-    title: "Собираю контекст",
-    copy: "Проверяю память, agenda, задачи и связанные решения.",
+    kicker: "Context mode",
+    title: "Scanning memory",
+    copy: "Checking agenda, open tasks, source notes, and recent decisions before the next action.",
   },
   happy: {
-    kicker: "Success",
-    title: "Готово",
-    copy: "Контекст обновлён, важное вынесено наверх.",
+    kicker: "Synced",
+    title: "Saved cleanly",
+    copy: "The update landed in memory and the most important context stays near the surface.",
   },
   alert: {
-    kicker: "Alert",
-    title: "Есть сигнал",
-    copy: "Проверяю внешние сигналы, рынки и резкие изменения.",
+    kicker: "Signal",
+    title: "Needs attention",
+    copy: "A reminder, market move, or source update is ready for review.",
   },
   shopping: {
-    kicker: "Shopping mode",
-    title: "Сравниваю корзину",
-    copy: "Проверяю свежесть цен, pantry и alerts перед покупкой.",
+    kicker: "Pantry mode",
+    title: "Basket check",
+    copy: "Reviews pantry, price alerts, and basket context before a grocery run.",
   },
   sad: {
-    kicker: "Low battery",
-    title: "Нужна разгрузка",
-    copy: "Контекста стало много — пора сжать сессию или выделить next action.",
+    kicker: "Overloaded",
+    title: "Compact session",
+    copy: "The thread is getting noisy. Compress the session or split the next action.",
   },
   working: {
     kicker: "Working",
-    title: "Считаю",
-    copy: "Отправляю безопасный payload в бот и жду ответ в Telegram.",
+    title: "Sending payload",
+    copy: "Submitting the action to the local API or falling back to Telegram safely.",
   },
 };

@@ -131,6 +131,7 @@ class ObjectStore:
             return None
         note_type = metadata.get("type", "note") or "note"
         source_type = metadata.get("source_type", "manual") or "manual"
+        source_id = metadata.get("source_id", "manual") or "manual"
         source_url = _unquote(metadata.get("source_url", ""))
         object_type = _object_type(
             note_type=note_type,
@@ -149,6 +150,8 @@ class ObjectStore:
             "note_type": note_type,
             "space": metadata.get("space", "default") or "default",
             "source_type": source_type,
+            "source_id": source_id,
+            **_typed_relations(note_type=note_type, tags=tags, body=body),
         }
         if source_url:
             relations["source_url"] = source_url
@@ -270,6 +273,29 @@ def _object_type(*, note_type: str, source_type: str, source_url: str) -> str:
     if note_type in {"person", "decision"}:
         return note_type
     return "note"
+
+
+def _typed_relations(*, note_type: str, tags: list[str], body: str) -> dict[str, str]:
+    relations: dict[str, str] = {}
+    if note_type == "person":
+        person = _person_slug(body)
+        if person:
+            relations["person"] = person
+    for tag in tags:
+        if tag.startswith("project-"):
+            relations["project"] = tag
+            break
+    links = re.findall(r"\[\[([^\]]+)\]\]", body)
+    for index, link in enumerate(links[:5], start=1):
+        relations[f"link_{index}"] = link.strip()
+    return relations
+
+
+def _person_slug(body: str) -> str:
+    for line in body.splitlines():
+        if line.lower().startswith("person:"):
+            return normalize_tag(line.partition(":")[2])
+    return ""
 
 
 def _object_title(*, object_type: str, metadata_title: str, body: str, path: Path) -> str:

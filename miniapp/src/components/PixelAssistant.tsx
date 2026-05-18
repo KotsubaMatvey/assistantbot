@@ -1,3 +1,4 @@
+import { Activity, BatteryCharging, CircleAlert } from "lucide-react";
 import { assistantStates, type AssistantState } from "../domain/assistant";
 
 type PixelAssistantProps = {
@@ -6,12 +7,11 @@ type PixelAssistantProps = {
 
 export function PixelAssistant({ state }: PixelAssistantProps) {
   const meta = assistantStates[state];
+  const isAlert = state === "alert" || state === "sad";
+
   return (
-    <section
-      className="grid grid-cols-[92px_1fr] items-center gap-4 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-2xl max-[420px]:grid-cols-1"
-      aria-label="Pixel assistant"
-    >
-      <div className="grid min-h-28 place-items-end rounded-lg bg-zinc-950 shadow-inner max-[420px]:min-h-24">
+    <section className="glass-panel pixel-shell" aria-label="Pixel assistant">
+      <div className="pixel-stage">
         <div className={`pixel-avatar is-${state}`} aria-hidden="true">
           <span className="pixel-hair" />
           <span className="pixel-head" />
@@ -34,9 +34,18 @@ export function PixelAssistant({ state }: PixelAssistantProps) {
         </div>
       </div>
       <div>
-        <p className="text-xs font-black uppercase text-teal-300">{meta.kicker}</p>
-        <h2 className="mt-1 text-xl font-black leading-tight text-zinc-50">{meta.title}</h2>
-        <p className="mt-2 text-sm leading-5 text-zinc-400">{meta.copy}</p>
+        <div className="flex items-center gap-2">
+          <span className="app-kicker">{meta.kicker}</span>
+          {isAlert ? (
+            <CircleAlert size={14} className="text-[var(--accent-2)]" />
+          ) : state === "working" ? (
+            <BatteryCharging size={14} className="text-[var(--accent)]" />
+          ) : (
+            <Activity size={14} className="text-[var(--accent)]" />
+          )}
+        </div>
+        <h2 className="pixel-status">{meta.title}</h2>
+        <p className="pixel-status-copy">{meta.copy}</p>
       </div>
     </section>
   );

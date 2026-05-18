@@ -114,14 +114,14 @@ export function App() {
   }, [refreshState]);
 
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-3xl gap-3 px-4 py-4 text-zinc-50">
-      <header className="flex items-center justify-between gap-4">
+    <main className="app-screen grid gap-4">
+      <header className="app-topbar">
         <div>
-          <p className="text-xs font-black uppercase text-teal-300">Assistant Bot</p>
-          <h1 className="mt-1 text-3xl font-black leading-tight">Second brain</h1>
+          <p className="app-kicker">Assistant Bot</p>
+          <h1 className="app-title">Mini App</h1>
         </div>
         <button
-          className="grid size-11 place-items-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-50 shadow-2xl"
+          className="icon-button"
           type="button"
           aria-label="Обновить статус"
           onClick={() => void refreshState()}
@@ -131,7 +131,6 @@ export function App() {
       </header>
 
       <PixelAssistant state={assistantState} />
-      <Tabs activeTab={activeTab} onSelect={setActiveTab} />
 
       {activeTab === "today" && (
         <TodayPanel
@@ -163,11 +162,13 @@ export function App() {
       {activeTab === "shopping" && <ShoppingPanel />}
       {activeTab === "markets" && <MarketsPanel />}
 
+      <Tabs activeTab={activeTab} onSelect={setActiveTab} />
+
       <div
         className={
           toast
-            ? "fixed bottom-4 right-4 max-w-[calc(100vw-32px)] translate-y-0 rounded-lg bg-teal-300 px-4 py-3 text-sm font-black text-zinc-950 opacity-100 transition"
-            : "pointer-events-none fixed bottom-4 right-4 max-w-[calc(100vw-32px)] translate-y-3 rounded-lg bg-teal-300 px-4 py-3 text-sm font-black text-zinc-950 opacity-0 transition"
+            ? "fixed right-4 top-4 z-30 max-w-[calc(100vw-32px)] translate-y-0 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-100 shadow-2xl transition"
+            : "pointer-events-none fixed right-4 top-4 z-30 max-w-[calc(100vw-32px)] translate-y-3 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-0 shadow-2xl transition"
         }
         role="status"
         aria-live="polite"
