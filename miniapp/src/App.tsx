@@ -1,4 +1,4 @@
-import { Home, RefreshCw } from "lucide-react";
+import { Bot, Home, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PixelAssistant } from "./components/PixelAssistant";
 import { Tabs } from "./components/Tabs";
@@ -31,6 +31,7 @@ export function App() {
   const [stateLoading, setStateLoading] = useState(true);
   const [stateError, setStateError] = useState("");
   const [homeStatus, setHomeStatus] = useState<HomeScreenStatus | "">("");
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const screenRef = useRef<HTMLElement | null>(null);
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
 
@@ -206,6 +207,14 @@ export function App() {
     screenRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeTab]);
 
+  const selectTab = useCallback((tab: TabId) => {
+    if (tab === "assistant") {
+      setAssistantOpen(true);
+      return;
+    }
+    setActiveTab(tab);
+  }, []);
+
   return (
     <main ref={screenRef} className="app-screen grid gap-4">
       <header className="app-topbar">
@@ -246,7 +255,6 @@ export function App() {
           onRefresh={refreshState}
         />
       )}
-      {activeTab === "assistant" && <AssistantPanel onAsk={askAssistant} />}
       {activeTab === "finance" && (
         <FinancePanel
           state={miniState?.finance}
@@ -267,13 +275,60 @@ export function App() {
       {activeTab === "shopping" && <ShoppingPanel />}
       {activeTab === "markets" && <MarketsPanel />}
 
-      <Tabs activeTab={activeTab} onSelect={setActiveTab} />
+      <Tabs activeTab={activeTab} onSelect={selectTab} />
+
+      {assistantOpen && (
+        <button
+          className="assistant-backdrop"
+          type="button"
+          aria-label="Закрыть ассистента"
+          onClick={() => setAssistantOpen(false)}
+        />
+      )}
+
+      <section
+        className={assistantOpen ? "assistant-drawer assistant-drawer-open" : "assistant-drawer"}
+        aria-hidden={!assistantOpen}
+      >
+        <div className="assistant-drawer-header">
+          <div>
+            <span className="app-kicker">Облачная LLM</span>
+            <strong>Ассистент</strong>
+          </div>
+          <button
+            className="icon-button !h-10 !w-10"
+            type="button"
+            aria-label="Закрыть ассистента"
+            onClick={() => setAssistantOpen(false)}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="assistant-drawer-body">
+          <AssistantPanel onAsk={askAssistant} compact />
+        </div>
+      </section>
+
+      <button
+        className={assistantOpen ? "assistant-dock assistant-dock-hidden" : "assistant-dock"}
+        type="button"
+        aria-label="Открыть ассистента"
+        onClick={() => setAssistantOpen(true)}
+      >
+        <span className="assistant-dock-icon">
+          <Bot size={19} />
+        </span>
+        <span>
+          <strong>Ассистент</strong>
+          <small>{assistantDockCopy(assistantState)}</small>
+        </span>
+      </button>
 
       <div
         className={
           toast
-            ? "fixed right-4 top-4 z-30 max-w-[calc(100vw-32px)] translate-y-0 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-100 shadow-2xl transition"
-            : "pointer-events-none fixed right-4 top-4 z-30 max-w-[calc(100vw-32px)] translate-y-3 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-0 shadow-2xl transition"
+            ? "fixed right-4 top-4 z-50 max-w-[calc(100vw-32px)] translate-y-0 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-100 shadow-2xl transition"
+            : "pointer-events-none fixed right-4 top-4 z-50 max-w-[calc(100vw-32px)] translate-y-3 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-0 shadow-2xl transition"
         }
         role="status"
         aria-live="polite"
@@ -296,6 +351,28 @@ function homeShortcutTitle(status: HomeScreenStatus | ""): string {
     return "Недоступно на этом устройстве";
   }
   return "Добавить на главный экран";
+}
+
+function assistantDockCopy(state: AssistantState): string {
+  if (state === "thinking") {
+    return "думает над контекстом";
+  }
+  if (state === "working") {
+    return "выполняет действие";
+  }
+  if (state === "happy") {
+    return "готов к следующему запросу";
+  }
+  if (state === "alert") {
+    return "есть сигнал";
+  }
+  if (state === "shopping") {
+    return "поможет с покупками";
+  }
+  if (state === "sad") {
+    return "нужно уточнение";
+  }
+  return "спросить что угодно";
 }
 
 function formatMiniAppError(error: unknown): string {

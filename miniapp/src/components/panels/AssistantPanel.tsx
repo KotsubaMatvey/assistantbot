@@ -3,17 +3,6 @@ import { useState } from "react";
 import { ActionButton } from "../ActionButton";
 import { assistantActions } from "../../domain/data";
 import { eventBus } from "../../domain/events";
-import type { AssistantState } from "../../domain/assistant";
-
-const states: { state: AssistantState; label: string }[] = [
-  { state: "idle", label: "Готов" },
-  { state: "thinking", label: "Контекст" },
-  { state: "happy", label: "Синхрон" },
-  { state: "alert", label: "Сигнал" },
-  { state: "shopping", label: "Покупки" },
-  { state: "sad", label: "Перегрузка" },
-  { state: "working", label: "В работе" },
-];
 
 const promptPresets = [
   "Что важно сейчас?",
@@ -29,9 +18,10 @@ type AssistantExchange = {
 
 type AssistantPanelProps = {
   onAsk: (text: string) => Promise<string>;
+  compact?: boolean;
 };
 
-export function AssistantPanel({ onAsk }: AssistantPanelProps) {
+export function AssistantPanel({ onAsk, compact = false }: AssistantPanelProps) {
   const [prompt, setPrompt] = useState("Что важно сейчас?");
   const [history, setHistory] = useState<AssistantExchange[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -55,8 +45,8 @@ export function AssistantPanel({ onAsk }: AssistantPanelProps) {
   };
 
   return (
-    <section className="grid gap-4" aria-label="Ассистент">
-      <section className="glass-panel p-4">
+    <section className={compact ? "assistant-panel assistant-panel-compact" : "assistant-panel"} aria-label="Ассистент">
+      <section className={compact ? "assistant-chat-panel" : "glass-panel p-4"}>
         <div className="section-title">
           <span>Чат с ассистентом</span>
           <span className="text-sm text-[var(--accent)]">облачная LLM</span>
@@ -110,19 +100,7 @@ export function AssistantPanel({ onAsk }: AssistantPanelProps) {
         )}
       </section>
 
-      <section className="glass-panel glass-panel-tight p-3">
-        <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
-          {states.map((item) => (
-            <ActionButton
-              key={item.state}
-              onClick={() => eventBus.emit("assistant:set-state", { state: item.state })}
-            >
-              {item.label}
-            </ActionButton>
-          ))}
-        </div>
-      </section>
-
+      <div className="assistant-quick-title">Быстрые команды</div>
       <div className="grid grid-cols-2 gap-2">
         {assistantActions.map((action) => (
           <ActionButton

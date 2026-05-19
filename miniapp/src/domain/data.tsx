@@ -34,7 +34,6 @@ export type Action = {
 
 export const tabs: { id: TabId; label: string; icon: ReactNode }[] = [
   { id: "today", label: "Сегодня", icon: <CalendarCheck size={16} /> },
-  { id: "assistant", label: "Ассистент", icon: <Bot size={16} /> },
   { id: "finance", label: "Бюджет", icon: <Wallet size={16} /> },
   { id: "memory", label: "Память", icon: <Brain size={16} /> },
   { id: "shopping", label: "Покупки", icon: <ShoppingBasket size={16} /> },
