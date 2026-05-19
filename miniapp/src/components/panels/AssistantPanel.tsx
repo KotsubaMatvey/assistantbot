@@ -6,20 +6,20 @@ import { eventBus } from "../../domain/events";
 import type { AssistantState } from "../../domain/assistant";
 
 const states: { state: AssistantState; label: string }[] = [
-  { state: "idle", label: "Idle" },
-  { state: "thinking", label: "Context" },
-  { state: "happy", label: "Synced" },
-  { state: "alert", label: "Signal" },
-  { state: "shopping", label: "Pantry" },
-  { state: "sad", label: "Overload" },
-  { state: "working", label: "Working" },
+  { state: "idle", label: "Готов" },
+  { state: "thinking", label: "Контекст" },
+  { state: "happy", label: "Синхрон" },
+  { state: "alert", label: "Сигнал" },
+  { state: "shopping", label: "Покупки" },
+  { state: "sad", label: "Перегрузка" },
+  { state: "working", label: "В работе" },
 ];
 
 const promptPresets = [
-  "что важно сейчас?",
-  "найди контекст по бюджету",
-  "собери план на сегодня",
-  "что я недавно решил?",
+  "Что важно сейчас?",
+  "Найди контекст по бюджету",
+  "Собери план на сегодня",
+  "Что я недавно решил?",
 ];
 
 type AssistantExchange = {
@@ -32,7 +32,7 @@ type AssistantPanelProps = {
 };
 
 export function AssistantPanel({ onAsk }: AssistantPanelProps) {
-  const [prompt, setPrompt] = useState("что важно сейчас?");
+  const [prompt, setPrompt] = useState("Что важно сейчас?");
   const [history, setHistory] = useState<AssistantExchange[]>([]);
   const [isSending, setIsSending] = useState(false);
 
@@ -55,17 +55,18 @@ export function AssistantPanel({ onAsk }: AssistantPanelProps) {
   };
 
   return (
-    <section className="grid gap-4" aria-label="Agent">
+    <section className="grid gap-4" aria-label="Ассистент">
       <section className="glass-panel p-4">
         <div className="section-title">
-          <span>Assistant Chat</span>
-          <span className="text-sm text-[var(--accent)]">cloud LLM</span>
+          <span>Чат с ассистентом</span>
+          <span className="text-sm text-[var(--accent)]">облачная LLM</span>
         </div>
         <div className="mt-4 grid gap-3">
           <textarea
             id="pixelPrompt"
             className="surface-input min-h-28 resize-none p-3 text-sm leading-relaxed"
             value={prompt}
+            placeholder="Напиши вопрос или команду"
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
               if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -87,7 +88,7 @@ export function AssistantPanel({ onAsk }: AssistantPanelProps) {
               ))}
             </div>
             <ActionButton primary icon={<Send size={16} />} onClick={() => void sendPrompt()}>
-              {isSending ? "Thinking" : "Send"}
+              {isSending ? "Думаю" : "Отправить"}
             </ActionButton>
           </div>
         </div>
@@ -95,7 +96,7 @@ export function AssistantPanel({ onAsk }: AssistantPanelProps) {
           <div className="mt-4 grid gap-2">
             <div className="flex items-center gap-2 text-xs font-black uppercase text-[var(--dim)]">
               <Clock3 size={14} />
-              Recent prompts
+              Последние запросы
             </div>
             {history.map((item) => (
               <article key={item.prompt} className="assistant-history-row">

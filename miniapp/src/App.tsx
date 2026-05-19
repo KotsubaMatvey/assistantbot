@@ -1,5 +1,5 @@
 import { Home, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PixelAssistant } from "./components/PixelAssistant";
 import { Tabs } from "./components/Tabs";
 import { AssistantPanel } from "./components/panels/AssistantPanel";
@@ -31,6 +31,7 @@ export function App() {
   const [stateLoading, setStateLoading] = useState(true);
   const [stateError, setStateError] = useState("");
   const [homeStatus, setHomeStatus] = useState<HomeScreenStatus | "">("");
+  const screenRef = useRef<HTMLElement | null>(null);
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
 
   const refreshState = useCallback(async () => {
@@ -53,14 +54,14 @@ export function App() {
     void recordMiniAppEvent("mutation_submit", { path });
     try {
       setMiniState(await postMiniAppMutation(path, body));
-      setToast("Saved");
+      setToast("Сохранено");
       setAssistantState("happy");
       void recordMiniAppEvent("mutation_success", { path });
     } catch (error) {
       const fallbackPayload = miniAppMutationToTelegramPayload(path, body);
       if (fallbackPayload && shouldFallbackToTelegram(error) && sendTelegramWebAppPayload(fallbackPayload)) {
         setAssistantState("happy");
-        setToast("Sent to bot");
+        setToast("Отправлено в бот");
         void recordMiniAppEvent("mutation_telegram_fallback", { path, type: fallbackPayload.type });
         return;
       }
@@ -89,9 +90,9 @@ export function App() {
     } catch (error) {
       if (shouldFallbackToTelegram(error) && sendTelegramWebAppPayload({ type: "assistant_message", text: cleanText })) {
         setAssistantState("happy");
-        setToast("Sent to bot");
+        setToast("Отправлено в бот");
         void recordMiniAppEvent("assistant_query_telegram_fallback", { chars: cleanText.length });
-        return "Sent to bot. The answer will appear in Telegram.";
+        return "Отправил запрос в бота. Ответ появится в Telegram.";
       }
       setAssistantState("sad");
       setStateError(formatMiniAppError(error));
@@ -102,16 +103,16 @@ export function App() {
 
   const addHomeShortcut = useCallback(() => {
     if (!telegram?.addToHomeScreen) {
-      setToast("Home shortcut unavailable");
+      setToast("Ярлык недоступен");
       void recordMiniAppEvent("home_screen_unsupported", {});
       return;
     }
     if (homeStatus === "added") {
-      setToast("Already added");
+      setToast("Уже добавлено");
       return;
     }
     telegram.addToHomeScreen();
-    setToast("Check Telegram prompt");
+    setToast("Проверь запрос Telegram");
     void recordMiniAppEvent("home_screen_prompt", {
       status: homeStatus || "unknown",
     });
@@ -127,7 +128,7 @@ export function App() {
     };
     const handleHomeScreenAdded = () => {
       setHomeStatus("added");
-      setToast("Added to home screen");
+      setToast("Добавлено на главный экран");
       void recordMiniAppEvent("home_screen_added", {});
     };
     const handleHomeScreenChecked = (event?: unknown) => {
@@ -181,7 +182,7 @@ export function App() {
           setToast("Отправлено в бот");
           return;
         }
-        setToast(`Preview payload: ${serialized}`);
+        setToast(`Предпросмотр: ${serialized}`);
       },
       recordEvent: (name, data) => {
         void recordMiniAppEvent(name, data);
@@ -201,12 +202,16 @@ export function App() {
     void refreshState();
   }, [refreshState]);
 
+  useEffect(() => {
+    screenRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [activeTab]);
+
   return (
-    <main className="app-screen grid gap-4">
+    <main ref={screenRef} className="app-screen grid gap-4">
       <header className="app-topbar">
         <div>
-          <p className="app-kicker">Assistant Bot</p>
-          <h1 className="app-title">Mini App</h1>
+          <p className="app-kicker">Бот-ассистент</p>
+          <h1 className="app-title">Ассистент</h1>
         </div>
         <div className="app-actions">
           <button
@@ -295,7 +300,7 @@ function homeShortcutTitle(status: HomeScreenStatus | ""): string {
 
 function formatMiniAppError(error: unknown): string {
   if (shouldFallbackToTelegram(error)) {
-    return "Live API unavailable. Telegram actions still work from inside Mini App.";
+    return "Основной API недоступен. Действия через Telegram внутри мини-приложения все еще работают.";
   }
-  return error instanceof Error ? error.message : "Mini App API error";
+  return error instanceof Error ? error.message : "Ошибка API мини-приложения";
 }

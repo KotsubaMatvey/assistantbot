@@ -59,10 +59,10 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
   }
 
   return (
-    <section className="grid gap-4" aria-label="Brain">
+    <section className="grid gap-4" aria-label="Память">
       {(loading || error) && (
         <div className="glass-panel glass-panel-tight flex items-center justify-between gap-3 p-3 text-sm text-[var(--muted)]">
-          <span>{loading ? "Loading live data" : error}</span>
+          <span>{loading ? "Загружаю актуальные данные" : error}</span>
           <button className="icon-button !h-9 !w-9" type="button" onClick={() => void onRefresh()}>
             <RefreshCw size={15} />
           </button>
@@ -71,9 +71,9 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
 
       <section className="glass-panel p-4">
         <div className="section-title">
-          <span>Memory/Brain</span>
+          <span>Память</span>
           <span className="text-sm text-[var(--accent)]">
-            {health?.profile_exists ? "profile ready" : "profile missing"}
+            {health?.profile_exists ? "профиль готов" : "профиля нет"}
           </span>
         </div>
         <label className="surface-input mt-4 flex min-h-14 items-center gap-3 px-4">
@@ -82,14 +82,14 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
             className="min-w-0 flex-1 bg-transparent text-base text-white outline-none"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search notes..."
+            placeholder="Поиск по заметкам..."
           />
         </label>
         <div className="mt-4 grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
-          <MetricCard label="Raw" value={String(health?.raw_captures ?? 0)} />
-          <MetricCard label="Daily" value={String(health?.daily_summaries ?? 0)} />
-          <MetricCard label="Projects" value={String(health?.project_summaries ?? 0)} />
-          <MetricCard label="Objects" value={String(state?.objects.total ?? 0)} />
+          <MetricCard label="Черновики" value={String(health?.raw_captures ?? 0)} />
+          <MetricCard label="Дни" value={String(health?.daily_summaries ?? 0)} />
+          <MetricCard label="Проекты" value={String(health?.project_summaries ?? 0)} />
+          <MetricCard label="Объекты" value={String(state?.objects.total ?? 0)} />
         </div>
       </section>
 
@@ -107,11 +107,11 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                 type="button"
                 onClick={() => setFilter(item)}
               >
-                {item}
+                {brainFilterLabel(item)}
               </button>
             ))}
           </div>
-          <span className="app-kicker">Instant Search</span>
+          <span className="app-kicker">Быстрый поиск</span>
         </div>
 
         <div className="mt-4 grid gap-2">
@@ -128,10 +128,10 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                       {item.title}
                     </strong>
                     <span className="muted-text mt-1 block truncate text-sm">
-                      {item.tags.slice(0, 4).join(", ") || "local memory"}
+                      {item.tags.slice(0, 4).join(", ") || "локальная память"}
                     </span>
                   </div>
-                  <span className="muted-text whitespace-nowrap text-sm">brain</span>
+                  <span className="muted-text whitespace-nowrap text-sm">память</span>
                 </div>
               </article>
             ))}
@@ -146,7 +146,7 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                       {source.url}
                     </strong>
                     <span className="muted-text mt-1 block text-xs">
-                      {source.enabled ? "enabled" : "disabled"}
+                      {source.enabled ? "включен" : "выключен"}
                       {source.last_error ? ` · ${source.last_error}` : ""}
                     </span>
                   </div>
@@ -155,12 +155,12 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                       icon={<RefreshCw size={16} />}
                       onClick={() => void onMutate("/api/miniapp/source/sync", { id: source.id })}
                     >
-                      Sync
+                      Синхронизировать
                     </ActionButton>
                     <ActionButton
                       onClick={() => void onMutate("/api/miniapp/source/delete", { id: source.id })}
                     >
-                      Delete
+                      Удалить
                     </ActionButton>
                   </div>
                 </div>
@@ -172,7 +172,7 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
               <article key={event.id} className="record-row">
                 <span className="app-kicker">{event.action}</span>
                 <strong className="mt-1 block break-words text-sm text-white">
-                  {event.detail || "Mini App event"}
+                  {event.detail || "Событие мини-приложения"}
                 </strong>
                 <span className="muted-text mt-1 block text-xs">{event.created_at}</span>
               </article>
@@ -196,10 +196,11 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
         <input
           className="surface-input px-3 py-2 text-sm"
           value={source.target}
+          placeholder="Ссылка или источник"
           onChange={(event) => setSource({ ...source, target: event.target.value })}
         />
         <button className="action-button action-button-primary" type="submit">
-          Add
+          Добавить
         </button>
       </form>
 
@@ -209,41 +210,51 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
           icon={<Brain size={16} />}
           onClick={() => eventBus.emit("command:send", { command: "memory_tree" })}
         >
-          Memory Tree
+          Дерево памяти
         </ActionButton>
         <ActionButton
           icon={<Database size={16} />}
           onClick={() => eventBus.emit("command:send", { command: "objects" })}
         >
-          Objects
+          Объекты
         </ActionButton>
         <ActionButton
           icon={<RefreshCw size={16} />}
           onClick={() => eventBus.emit("command:send", { command: "weekly_summary" })}
         >
-          Weekly
+          Неделя
         </ActionButton>
         <ActionButton
           icon={<Database size={16} />}
           onClick={() => eventBus.emit("command:send", { command: "source_list" })}
         >
-          Sources
+          Источники
         </ActionButton>
         <ActionButton
           icon={<RefreshCw size={16} />}
           onClick={() => void onMutate("/api/miniapp/source/sync", {})}
         >
-          Sync
+          Синхронизация
         </ActionButton>
         <ActionButton
           icon={<Wrench size={16} />}
           onClick={() => eventBus.emit("command:send", { command: "tools" })}
         >
-          Tools
+          Инструменты
         </ActionButton>
       </div>
     </section>
   );
+}
+
+function brainFilterLabel(filter: BrainFilter): string {
+  if (filter === "objects") {
+    return "объекты";
+  }
+  if (filter === "sources") {
+    return "источники";
+  }
+  return "события";
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {

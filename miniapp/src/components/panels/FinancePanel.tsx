@@ -63,30 +63,30 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
   }
 
   return (
-    <section className="grid gap-4" aria-label="Budget">
+    <section className="grid gap-4" aria-label="Бюджет">
       {(loading || error) && (
         <div className="glass-panel glass-panel-tight p-3 text-sm text-[var(--muted)]">
-          {loading ? "Loading live data" : error}
+          {loading ? "Загружаю актуальные данные" : error}
         </div>
       )}
 
       <section className="glass-panel grid grid-cols-[1fr_220px] gap-4 p-4 max-[680px]:grid-cols-1">
         <div>
           <div className="section-title">
-            <span>Budget Overview</span>
-            <span className="text-sm text-[var(--accent-2)]">{state?.month ?? "Current"}</span>
+            <span>Обзор бюджета</span>
+            <span className="text-sm text-[var(--accent-2)]">{state?.month ?? "Текущий"}</span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <MetricCard label="Balance" value={state?.balance ?? "0.00"} />
-            <MetricCard label="Spent" value={state?.expenses ?? "0.00"} />
-            <MetricCard label="Income" value={state?.income ?? "0.00"} />
-            <MetricCard label="Forecast" value={state?.forecast ?? "0.00"} />
+            <MetricCard label="Баланс" value={state?.balance ?? "0.00"} />
+            <MetricCard label="Расходы" value={state?.expenses ?? "0.00"} />
+            <MetricCard label="Доходы" value={state?.income ?? "0.00"} />
+            <MetricCard label="Прогноз" value={state?.forecast ?? "0.00"} />
           </div>
         </div>
         <div className="grid place-items-center">
           <div className="relative size-44 rounded-full" style={chartStyle}>
             <div className="absolute inset-10 grid place-items-center rounded-full bg-[var(--bg)] text-center">
-              <span className="app-kicker">Left</span>
+              <span className="app-kicker">Остаток</span>
               <strong className="text-lg font-black text-white">
                 {state?.budget.remaining ?? "0.00"}
               </strong>
@@ -98,7 +98,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
       <section className="glass-panel glass-panel-tight grid gap-3 p-3">
         <MoneyForm
           icon={<CreditCard size={16} />}
-          title="Expense"
+          title="Расход"
           amount={expense.amount}
           category={expense.category}
           note={expense.note}
@@ -109,7 +109,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
         />
         <MoneyForm
           icon={<TrendingUp size={16} />}
-          title="Income"
+          title="Доход"
           amount={income.amount}
           category={income.category}
           note={income.note}
@@ -120,7 +120,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
         />
         <PairForm
           icon={<Wallet size={16} />}
-          title="Account"
+          title="Счет"
           first={account.name}
           second={account.balance}
           onFirst={(name) => setAccount((current) => ({ ...current, name }))}
@@ -129,7 +129,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
         />
         <PairForm
           icon={<Repeat size={16} />}
-          title="Subscription"
+          title="Подписка"
           first={subscription.name}
           second={subscription.amount}
           onFirst={(name) => setSubscription((current) => ({ ...current, name }))}
@@ -139,16 +139,17 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
         <form className="grid gap-2" onSubmit={(event) => void submitReceipt(event)}>
           <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
             <ReceiptText size={16} />
-            Receipt
+            Чек
           </label>
           <textarea
             className="surface-input min-h-24 p-3 text-sm"
             value={receipt}
+            placeholder="Вставь текст чека"
             onChange={(event) => setReceipt(event.target.value)}
           />
           <button className="action-button action-button-primary" type="submit">
             <Plus size={16} />
-            Save receipt
+            Сохранить чек
           </button>
         </form>
       </section>
@@ -163,7 +164,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
         {(state?.transactions ?? []).slice(0, 6).map((item) => (
           <DataRow
             key={item.id}
-            left={`${item.kind}: ${item.category}`}
+            left={`${translateTransactionKind(item.kind)}: ${item.category}`}
             right={item.amount}
             detail={item.note}
           />
@@ -229,19 +230,22 @@ function MoneyForm({
         className="surface-input px-3 py-2 text-sm"
         inputMode="decimal"
         value={amount}
+        placeholder="Сумма"
         onChange={(event) => onAmount(event.target.value)}
       />
       <input
         className="surface-input px-3 py-2 text-sm"
         value={category}
+        placeholder="Категория"
         onChange={(event) => onCategory(event.target.value)}
       />
       <input
         className="surface-input px-3 py-2 text-sm"
         value={note}
+        placeholder="Комментарий"
         onChange={(event) => onNote(event.target.value)}
       />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Save ${title}`}>
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Сохранить: ${title}`}>
         <Plus size={16} />
       </button>
     </form>
@@ -274,15 +278,17 @@ function PairForm({
       <input
         className="surface-input px-3 py-2 text-sm"
         value={first}
+        placeholder="Название"
         onChange={(event) => onFirst(event.target.value)}
       />
       <input
         className="surface-input px-3 py-2 text-sm"
         inputMode="decimal"
         value={second}
+        placeholder="Сумма"
         onChange={(event) => onSecond(event.target.value)}
       />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Save ${title}`}>
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Сохранить: ${title}`}>
         <Plus size={16} />
       </button>
     </form>
@@ -301,6 +307,16 @@ function DataRow({ left, right, detail = "" }: { left: string; right: string; de
       </div>
     </article>
   );
+}
+
+function translateTransactionKind(kind: string): string {
+  if (kind === "expense") {
+    return "Расход";
+  }
+  if (kind === "income") {
+    return "Доход";
+  }
+  return kind;
 }
 
 function budgetChartStyle(categories: { amount: string }[]): CSSProperties {

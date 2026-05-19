@@ -5,14 +5,14 @@ import { quickActions, shoppingMetrics } from "../../domain/data";
 import { eventBus } from "../../domain/events";
 
 export function ShoppingPanel() {
-  const [basket, setBasket] = useState("2x milk 2.5 1L\neggs C1 10 pcs\nsugar 1kg");
+  const [basket, setBasket] = useState("2x молоко 2.5% 1 л\nяйца C1 10 шт\nсахар 1 кг");
 
   return (
-    <section className="grid gap-4" aria-label="Pantry">
+    <section className="grid gap-4" aria-label="Покупки">
       <section className="glass-panel p-4">
         <div className="section-title">
-          <span>Pantry Status</span>
-          <span className="text-sm text-[var(--accent)]">basket ready</span>
+          <span>Статус запасов</span>
+          <span className="text-sm text-[var(--accent)]">корзина готова</span>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
           {shoppingMetrics.map((metric) => (
@@ -26,7 +26,7 @@ export function ShoppingPanel() {
 
       <section className="glass-panel glass-panel-tight grid gap-3 p-3">
         <label className="app-kicker" htmlFor="basket">
-          Grocery Run
+          Поход в магазин
         </label>
         <textarea
           id="basket"
@@ -36,13 +36,13 @@ export function ShoppingPanel() {
         />
         <div className="grid grid-cols-2 gap-2 max-[420px]:grid-cols-1">
           <ActionButton primary onClick={() => eventBus.emit("basket:compare", { text: basket })}>
-            Compare
+            Сравнить
           </ActionButton>
           <ActionButton
             icon={<Database size={16} />}
             onClick={() => eventBus.emit("command:send", { command: "pantry_deals" })}
           >
-            Deals
+            Акции
           </ActionButton>
         </div>
       </section>

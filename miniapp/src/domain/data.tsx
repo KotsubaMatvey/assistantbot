@@ -33,74 +33,74 @@ export type Action = {
 };
 
 export const tabs: { id: TabId; label: string; icon: ReactNode }[] = [
-  { id: "today", label: "Today", icon: <CalendarCheck size={16} /> },
-  { id: "assistant", label: "Agent", icon: <Bot size={16} /> },
-  { id: "finance", label: "Budget", icon: <Wallet size={16} /> },
-  { id: "memory", label: "Brain", icon: <Brain size={16} /> },
-  { id: "shopping", label: "Pantry", icon: <ShoppingBasket size={16} /> },
-  { id: "markets", label: "Markets", icon: <TrendingUp size={16} /> },
+  { id: "today", label: "Сегодня", icon: <CalendarCheck size={16} /> },
+  { id: "assistant", label: "Ассистент", icon: <Bot size={16} /> },
+  { id: "finance", label: "Бюджет", icon: <Wallet size={16} /> },
+  { id: "memory", label: "Память", icon: <Brain size={16} /> },
+  { id: "shopping", label: "Покупки", icon: <ShoppingBasket size={16} /> },
+  { id: "markets", label: "Рынки", icon: <TrendingUp size={16} /> },
 ];
 
 export const todayMetrics: Metric[] = [
-  { label: "Timeline", value: "/today" },
-  { label: "Tasks", value: "/tasks" },
-  { label: "Reminders", value: "/agenda" },
-  { label: "Focus", value: "/morning" },
+  { label: "Лента", value: "/today" },
+  { label: "Задачи", value: "/tasks" },
+  { label: "Напоминания", value: "/agenda" },
+  { label: "Фокус", value: "/morning" },
 ];
 
 export const financeMetrics: Metric[] = [
-  { label: "Balance", value: "/accounts" },
-  { label: "Expenses", value: "/expense" },
-  { label: "Income", value: "/income" },
-  { label: "Forecast", value: "/cashflow" },
+  { label: "Баланс", value: "/accounts" },
+  { label: "Расходы", value: "/expense" },
+  { label: "Доходы", value: "/income" },
+  { label: "Прогноз", value: "/cashflow" },
 ];
 
 export const shoppingMetrics: Metric[] = [
-  { label: "Basket", value: "5 items" },
-  { label: "Best route", value: "2 stores" },
-  { label: "Savings", value: "312 RUB" },
-  { label: "Freshness", value: "18 min" },
+  { label: "Корзина", value: "5 товаров" },
+  { label: "Маршрут", value: "2 магазина" },
+  { label: "Экономия", value: "312 RUB" },
+  { label: "Свежесть", value: "18 мин" },
 ];
 
 export const quickActions: Action[] = [
-  { label: "Price alerts", command: "price_alerts", icon: <Bell size={16} /> },
-  { label: "Pantry", command: "pantry", icon: <Database size={16} /> },
-  { label: "Budget", command: "budget", icon: <Wallet size={16} /> },
-  { label: "Plan vs fact", command: "budget_plan", icon: <ClipboardList size={16} /> },
+  { label: "Ценовые сигналы", command: "price_alerts", icon: <Bell size={16} /> },
+  { label: "Запасы", command: "pantry", icon: <Database size={16} /> },
+  { label: "Бюджет", command: "budget", icon: <Wallet size={16} /> },
+  { label: "План/факт", command: "budget_plan", icon: <ClipboardList size={16} /> },
 ];
 
 export const assistantActions: Action[] = [
-  { label: "Home", command: "capability_center", icon: <Brain size={16} />, primary: true },
-  { label: "Status", command: "status", icon: <RefreshCw size={16} /> },
-  { label: "Compact", command: "compact", icon: <CheckCircle2 size={16} /> },
-  { label: "New", command: "new", icon: <Bot size={16} /> },
-  { label: "Agenda", command: "agenda", icon: <CalendarCheck size={16} /> },
-  { label: "Today", command: "today", icon: <Sparkles size={16} /> },
-  { label: "Tasks", command: "tasks", icon: <ClipboardList size={16} /> },
-  { label: "Recent", command: "recent", icon: <FileSearch size={16} /> },
-  { label: "Sources", command: "sources", icon: <Database size={16} /> },
-  { label: "Context", command: "lifestyle_context", icon: <Brain size={16} /> },
-  { label: "Skills", command: "skills", icon: <Sparkles size={16} /> },
-  { label: "Morning", command: "morning", icon: <Activity size={16} /> },
-  { label: "Assistants", command: "assistants", icon: <Bot size={16} /> },
+  { label: "Главная", command: "capability_center", icon: <Brain size={16} />, primary: true },
+  { label: "Статус", command: "status", icon: <RefreshCw size={16} /> },
+  { label: "Сжать", command: "compact", icon: <CheckCircle2 size={16} /> },
+  { label: "Новая сессия", command: "new", icon: <Bot size={16} /> },
+  { label: "Повестка", command: "agenda", icon: <CalendarCheck size={16} /> },
+  { label: "Сегодня", command: "today", icon: <Sparkles size={16} /> },
+  { label: "Задачи", command: "tasks", icon: <ClipboardList size={16} /> },
+  { label: "Недавнее", command: "recent", icon: <FileSearch size={16} /> },
+  { label: "Источники", command: "sources", icon: <Database size={16} /> },
+  { label: "Контекст", command: "lifestyle_context", icon: <Brain size={16} /> },
+  { label: "Навыки", command: "skills", icon: <Sparkles size={16} /> },
+  { label: "Утро", command: "morning", icon: <Activity size={16} /> },
+  { label: "Ассистенты", command: "assistants", icon: <Bot size={16} /> },
 ];
 
 export const todayActions: Action[] = [
-  { label: "Agenda", command: "agenda", icon: <CalendarCheck size={16} />, primary: true },
-  { label: "Today", command: "today", icon: <Sparkles size={16} /> },
-  { label: "Tasks", command: "tasks", icon: <ListChecks size={16} /> },
-  { label: "Morning", command: "morning", icon: <Activity size={16} /> },
-  { label: "Evening", command: "evening", icon: <CheckCircle2 size={16} /> },
-  { label: "Week", command: "week", icon: <ClipboardList size={16} /> },
-  { label: "People", command: "people", icon: <Users size={16} /> },
-  { label: "Objects", command: "objects", icon: <Database size={16} /> },
+  { label: "Повестка", command: "agenda", icon: <CalendarCheck size={16} />, primary: true },
+  { label: "Сегодня", command: "today", icon: <Sparkles size={16} /> },
+  { label: "Задачи", command: "tasks", icon: <ListChecks size={16} /> },
+  { label: "Утро", command: "morning", icon: <Activity size={16} /> },
+  { label: "Вечер", command: "evening", icon: <CheckCircle2 size={16} /> },
+  { label: "Неделя", command: "week", icon: <ClipboardList size={16} /> },
+  { label: "Люди", command: "people", icon: <Users size={16} /> },
+  { label: "Объекты", command: "objects", icon: <Database size={16} /> },
 ];
 
 export const financeActions: Action[] = [
-  { label: "Cashflow", command: "cashflow", icon: <TrendingUp size={16} />, primary: true },
-  { label: "Accounts", command: "accounts", icon: <Wallet size={16} /> },
-  { label: "Budget", command: "budget", icon: <ClipboardList size={16} /> },
-  { label: "Subscriptions", command: "subscriptions", icon: <RefreshCw size={16} /> },
-  { label: "Receipts", command: "budget_plan", icon: <FileSearch size={16} /> },
-  { label: "Finance context", command: "objects", icon: <Database size={16} /> },
+  { label: "Денежный поток", command: "cashflow", icon: <TrendingUp size={16} />, primary: true },
+  { label: "Счета", command: "accounts", icon: <Wallet size={16} /> },
+  { label: "Бюджет", command: "budget", icon: <ClipboardList size={16} /> },
+  { label: "Подписки", command: "subscriptions", icon: <RefreshCw size={16} /> },
+  { label: "Чеки", command: "budget_plan", icon: <FileSearch size={16} /> },
+  { label: "Фин. контекст", command: "objects", icon: <Database size={16} /> },
 ];

@@ -10,7 +10,7 @@ export function PixelAssistant({ state }: PixelAssistantProps) {
   const isAlert = state === "alert" || state === "sad";
 
   return (
-    <section className="glass-panel pixel-shell" aria-label="Pixel assistant">
+    <section className="glass-panel pixel-shell" aria-label="Пиксельный ассистент">
       <div className="pixel-stage">
         <div className={`pixel-avatar is-${state}`} aria-hidden="true">
           <span className="pixel-hair" />

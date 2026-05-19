@@ -74,28 +74,28 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
       id: item.id,
       title: item.snippet,
       detail: item.due_at,
-      type: "Reminder",
+      type: "Напоминание",
     })),
     ...(state?.tasks ?? []).map((item) => ({
       id: item.id,
       title: item.snippet,
-      detail: item.tags.slice(0, 3).join(", ") || "Task",
-      type: "Task",
+      detail: item.tags.slice(0, 3).join(", ") || "Задача",
+      type: "Задача",
     })),
   ].slice(0, 6);
 
   return (
-    <section className="grid gap-4" aria-label="Today">
+    <section className="grid gap-4" aria-label="Сегодня">
       <StatusStrip loading={loading} error={error} onRefresh={onRefresh} />
 
       <div className="grid grid-cols-[0.85fr_1.15fr] gap-3 max-[680px]:grid-cols-1">
         <section className="glass-panel glass-panel-tight p-4">
           <div className="section-title">
-            <span>Agenda</span>
+            <span>Повестка</span>
             <CalendarDays size={20} className="text-[var(--accent)]" />
           </div>
           <div className="mt-4 grid grid-cols-7 gap-2 text-center text-sm font-black">
-            {["M", "T", "W", "T", "F", "S", "S"].map((day) => (
+            {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
               <span key={day} className="dim-text">
                 {day}
               </span>
@@ -121,7 +121,7 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
 
         <section className="glass-panel glass-panel-tight p-4">
           <div className="section-title">
-            <span>Task</span>
+            <span>Дела</span>
             <span className="text-sm text-[var(--accent)]">{agendaItems.length}</span>
           </div>
           <div className="mt-4 grid gap-2">
@@ -139,15 +139,15 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
                     <span className="muted-text mt-1 block truncate text-sm">{item.detail}</span>
                   </div>
                   <span className="muted-text whitespace-nowrap text-sm">
-                    {index === 0 ? "now" : "next"}
+                    {index === 0 ? "сейчас" : "далее"}
                   </span>
                 </div>
               </article>
             ))}
             {!loading && agendaItems.length === 0 && (
               <article className="record-row">
-                <strong className="block text-base text-white">No scheduled items</strong>
-                <span className="muted-text mt-1 block text-sm">Capture a task or reminder.</span>
+                <strong className="block text-base text-white">Нет запланированных дел</strong>
+                <span className="muted-text mt-1 block text-sm">Добавь задачу или напоминание.</span>
               </article>
             )}
           </div>
@@ -155,31 +155,31 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
       </div>
 
       <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
-        <MetricCard label="Tasks" value={String(state?.tasks.length ?? 0)} />
-        <MetricCard label="Reminders" value={String(state?.reminders.length ?? 0)} />
-        <MetricCard label="Notes" value={String(state?.notes.length ?? 0)} />
-        <MetricCard label="Focus" value={String(state?.focus.length ?? 0)} />
+        <MetricCard label="Задачи" value={String(state?.tasks.length ?? 0)} />
+        <MetricCard label="Напоминания" value={String(state?.reminders.length ?? 0)} />
+        <MetricCard label="Заметки" value={String(state?.notes.length ?? 0)} />
+        <MetricCard label="Фокус" value={String(state?.focus.length ?? 0)} />
       </div>
 
       <section className="glass-panel glass-panel-tight grid gap-2 p-3">
         <QuickForm
           icon={<ListChecks size={16} />}
           value={taskText}
-          label="Task"
+          label="Задача"
           onChange={setTaskText}
           onSubmit={submitTask}
         />
         <QuickForm
           icon={<NotebookPen size={16} />}
           value={noteText}
-          label="Note"
+          label="Заметка"
           onChange={setNoteText}
           onSubmit={submitNote}
         />
         <QuickForm
           icon={<Bell size={16} />}
           value={reminderText}
-          label="Reminder"
+          label="Напоминание"
           onChange={setReminderText}
           onSubmit={submitReminder}
         />
@@ -218,19 +218,21 @@ function PersonForm({
     >
       <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         <Users size={16} />
-        Person
+        Человек
       </label>
       <input
         className="surface-input px-3 py-2 text-sm"
         value={person.name}
+        placeholder="Имя"
         onChange={(event) => onChange({ ...person, name: event.target.value })}
       />
       <input
         className="surface-input px-3 py-2 text-sm"
         value={person.note}
+        placeholder="Заметка"
         onChange={(event) => onChange({ ...person, note: event.target.value })}
       />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label="Add Person">
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label="Добавить человека">
         <Plus size={16} />
       </button>
     </form>
@@ -268,9 +270,10 @@ function QuickForm({
       <input
         className="surface-input px-3 py-2 text-sm"
         value={value}
+        placeholder={label}
         onChange={(event) => onChange(event.target.value)}
       />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Add ${label}`}>
+      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Добавить: ${label}`}>
         <Plus size={16} />
       </button>
     </form>
@@ -291,7 +294,7 @@ function StatusStrip({
   }
   return (
     <div className="glass-panel glass-panel-tight flex items-center justify-between gap-3 p-3 text-sm text-[var(--muted)]">
-      <span>{loading ? "Loading live data" : error}</span>
+      <span>{loading ? "Загружаю актуальные данные" : error}</span>
       <button className="icon-button !h-9 !w-9" type="button" onClick={() => void onRefresh()}>
         <RefreshCw size={15} />
       </button>
