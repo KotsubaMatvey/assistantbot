@@ -94,15 +94,15 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
       </section>
 
       <section className="glass-panel glass-panel-tight p-4">
-        <div className="memory-filterbar">
-          <div className="memory-filtertabs">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
             {(["objects", "sources", "events"] as BrainFilter[]).map((item) => (
               <button
                 key={item}
                 className={
                   filter === item
-                    ? "memory-filterbutton memory-filterbutton-active"
-                    : "memory-filterbutton"
+                    ? "rounded-full bg-[var(--accent)] px-3 py-2 text-xs font-black capitalize text-zinc-950"
+                    : "rounded-full border border-[var(--line)] px-3 py-2 text-xs font-black capitalize text-[var(--muted)]"
                 }
                 type="button"
                 onClick={() => setFilter(item)}

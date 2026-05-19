@@ -54,11 +54,7 @@ export function AssistantPanel({ onAsk, compact = false }: AssistantPanelProps) 
         <div className="mt-4 grid gap-3">
           <textarea
             id="pixelPrompt"
-            className={
-              compact
-                ? "surface-input assistant-prompt-input p-3 text-sm leading-relaxed"
-                : "surface-input min-h-28 resize-none p-3 text-sm leading-relaxed"
-            }
+            className="surface-input min-h-28 resize-none p-3 text-sm leading-relaxed"
             value={prompt}
             placeholder="Напиши вопрос или команду"
             onChange={(event) => setPrompt(event.target.value)}
@@ -68,8 +64,8 @@ export function AssistantPanel({ onAsk, compact = false }: AssistantPanelProps) 
               }
             }}
           />
-          <div className={compact ? "assistant-prompt-layout" : "grid grid-cols-[1fr_118px] gap-2 max-[440px]:grid-cols-1"}>
-            <div className={compact ? "assistant-prompt-list" : "flex flex-wrap gap-2"}>
+          <div className="grid grid-cols-[1fr_118px] gap-2 max-[440px]:grid-cols-1">
+            <div className="flex flex-wrap gap-2">
               {promptPresets.map((item) => (
                 <button
                   key={item}
@@ -105,7 +101,7 @@ export function AssistantPanel({ onAsk, compact = false }: AssistantPanelProps) 
       </section>
 
       <div className="assistant-quick-title">Быстрые команды</div>
-      <div className="assistant-actions-grid">
+      <div className="grid grid-cols-2 gap-2">
         {assistantActions.map((action) => (
           <ActionButton
             key={action.command}
