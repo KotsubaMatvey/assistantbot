@@ -31,7 +31,7 @@ export function App() {
   const [stateLoading, setStateLoading] = useState(true);
   const [stateError, setStateError] = useState("");
   const [homeStatus, setHomeStatus] = useState<HomeScreenStatus | "">("");
-  const [assistantOpen, setAssistantOpen] = useState(true);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const screenRef = useRef<HTMLElement | null>(null);
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
 
@@ -213,7 +213,6 @@ export function App() {
       return;
     }
     setActiveTab(tab);
-    setAssistantOpen(true);
   }, []);
 
   return (

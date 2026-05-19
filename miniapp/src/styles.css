@@ -550,12 +550,13 @@ button {
     position: fixed;
     right: max(12px, calc((100vw - 760px) / 2 + 14px));
     bottom: 92px;
-    left: max(12px, calc((100vw - 760px) / 2 + 14px));
+    left: auto;
     z-index: 33;
     display: grid;
-    grid-template-columns: 42px 1fr;
+    grid-template-columns: 42px minmax(0, 1fr);
     align-items: center;
     gap: 10px;
+    width: min(248px, calc(100vw - 28px));
     min-height: 58px;
     border: 1px solid rgba(0, 196, 180, 0.7);
     border-radius: 20px;
@@ -940,6 +941,10 @@ button {
 
     .assistant-drawer {
       max-height: min(62vh, 540px);
+    }
+
+    .assistant-dock {
+      width: min(232px, calc(100vw - 24px));
     }
 
     .memory-filterbar {
