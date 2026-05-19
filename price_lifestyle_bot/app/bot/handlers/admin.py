@@ -25,6 +25,13 @@ from app.services.admin_tools import (
     security_audit_checks,
 )
 from app.services.audit_log import AuditLogStore
+from app.services.llm_client import (
+    check_llm_providers,
+    format_llm_provider_checks,
+    llm_model_lines,
+    llm_provider_status_lines,
+    reset_llm_cooldowns,
+)
 from app.services.obsidian_memory import ObsidianMemory
 from app.services.price_health import format_catalog_health, get_catalog_health
 from app.services.scraper_diagnostics import diagnose_scraper, format_scraper_diagnostic
@@ -188,6 +195,39 @@ async def admin_deploy_check(message: Message) -> None:
         *check_docker_compose(repo_root),
     ]
     await message.answer("Deploy check\n" + format_checks(checks))
+
+
+@router.message(Command("llm_status"))
+async def llm_status(message: Message) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    await message.answer("\n".join(llm_provider_status_lines(get_settings()))[:3900])
+
+
+@router.message(Command("llm_models"))
+async def llm_models(message: Message) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    await message.answer("\n".join(llm_model_lines(get_settings()))[:3900])
+
+
+@router.message(Command("llm_reset"))
+async def llm_reset(message: Message) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    provider = (message.text or "").partition(" ")[2].strip() or None
+    count = reset_llm_cooldowns(get_settings(), provider_name=provider)
+    target = provider or "all providers"
+    await message.answer(f"LLM cooldown reset: {target} ({count})")
+
+
+@router.message(Command("llm_test"))
+async def llm_test(message: Message) -> None:
+    if not _is_admin(message.from_user.id if message.from_user else None):
+        return
+    prompt = (message.text or "").partition(" ")[2].strip() or "Ответь одним словом: ok"
+    checks = await check_llm_providers(get_settings(), prompt=prompt)
+    await message.answer(format_llm_provider_checks(checks)[:3900])
 
 
 @router.message(Command("admin_secret_scan"))

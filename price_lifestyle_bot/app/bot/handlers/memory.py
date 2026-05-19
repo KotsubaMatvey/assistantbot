@@ -36,6 +36,7 @@ from app.services.knowledge_ingestion import (
     format_learned_page_note,
     list_rss_subscriptions,
 )
+from app.services.llm_client import answer_question_with_llm
 from app.services.memory_transfer import export_user_memory, import_user_memory
 from app.services.memory_tree import MemoryTreeStore, format_build_result
 from app.services.mini_app import format_mini_app_status, mini_app_manifest
@@ -1462,8 +1463,19 @@ async def memory_ask_handler(message: Message) -> None:
         await message.answer("Использование: /ask <вопрос к памяти>")
         return
 
-    memory = ObsidianMemory(get_settings().obsidian_vault_path)
-    await message.answer(memory.ask_user_memory(user_id=message.from_user.id, question=question))
+    settings = get_settings()
+    memory = ObsidianMemory(settings.obsidian_vault_path)
+    llm_answer = await answer_question_with_llm(
+        memory=memory,
+        user_id=message.from_user.id,
+        question=question,
+        settings=settings,
+    )
+    await message.answer(
+        (llm_answer or memory.ask_user_memory(user_id=message.from_user.id, question=question))[
+            :3900
+        ]
+    )
 
 
 @router.message(Command("learn_url"))

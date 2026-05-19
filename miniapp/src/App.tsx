@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Home, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PixelAssistant } from "./components/PixelAssistant";
 import { Tabs } from "./components/Tabs";
@@ -11,6 +11,7 @@ import { TodayPanel } from "./components/panels/TodayPanel";
 import {
   loadMiniAppState,
   miniAppMutationToTelegramPayload,
+  postMiniAppAssistant,
   postMiniAppMutation,
   recordMiniAppEvent,
   sendTelegramPayload as sendTelegramWebAppPayload,
@@ -20,7 +21,7 @@ import {
 import type { AssistantState } from "./domain/assistant";
 import { eventBus, type TabId } from "./domain/events";
 import { attachRules } from "./domain/rules";
-import type { TelegramPayload, TelegramWebApp } from "./types/telegram";
+import type { HomeScreenStatus, TelegramPayload, TelegramWebApp } from "./types/telegram";
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabId>("today");
@@ -29,6 +30,7 @@ export function App() {
   const [miniState, setMiniState] = useState<MiniAppState | null>(null);
   const [stateLoading, setStateLoading] = useState(true);
   const [stateError, setStateError] = useState("");
+  const [homeStatus, setHomeStatus] = useState<HomeScreenStatus | "">("");
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
 
   const refreshState = useCallback(async () => {
@@ -68,19 +70,105 @@ export function App() {
     }
   }, []);
 
+  const askAssistant = useCallback(async (text: string): Promise<string> => {
+    const cleanText = text.trim();
+    if (!cleanText) {
+      return "Напиши запрос ассистенту.";
+    }
+    setAssistantState("thinking");
+    setStateError("");
+    void recordMiniAppEvent("assistant_query_submit", { chars: cleanText.length });
+    try {
+      const result = await postMiniAppAssistant(cleanText);
+      setAssistantState("happy");
+      void recordMiniAppEvent("assistant_query_success", {
+        chars: cleanText.length,
+        answer_chars: result.answer.length,
+      });
+      return result.answer;
+    } catch (error) {
+      if (shouldFallbackToTelegram(error) && sendTelegramWebAppPayload({ type: "assistant_message", text: cleanText })) {
+        setAssistantState("happy");
+        setToast("Sent to bot");
+        void recordMiniAppEvent("assistant_query_telegram_fallback", { chars: cleanText.length });
+        return "Sent to bot. The answer will appear in Telegram.";
+      }
+      setAssistantState("sad");
+      setStateError(formatMiniAppError(error));
+      void recordMiniAppEvent("assistant_query_error", { chars: cleanText.length });
+      return formatMiniAppError(error);
+    }
+  }, []);
+
+  const addHomeShortcut = useCallback(() => {
+    if (!telegram?.addToHomeScreen) {
+      setToast("Home shortcut unavailable");
+      void recordMiniAppEvent("home_screen_unsupported", {});
+      return;
+    }
+    if (homeStatus === "added") {
+      setToast("Already added");
+      return;
+    }
+    telegram.addToHomeScreen();
+    setToast("Check Telegram prompt");
+    void recordMiniAppEvent("home_screen_prompt", {
+      status: homeStatus || "unknown",
+    });
+  }, [homeStatus, telegram]);
+
   useEffect(() => {
     if (!telegram) {
       return;
     }
-    telegram.ready();
+    const syncViewport = () => {
+      const height = telegram.stableViewportHeight || telegram.viewportHeight || window.innerHeight;
+      document.documentElement.style.setProperty("--app-height", `${height}px`);
+    };
+    const handleHomeScreenAdded = () => {
+      setHomeStatus("added");
+      setToast("Added to home screen");
+      void recordMiniAppEvent("home_screen_added", {});
+    };
+    const handleHomeScreenChecked = (event?: unknown) => {
+      const status =
+        typeof event === "string"
+          ? event
+          : typeof event === "object" && event && "status" in event
+            ? String(event.status)
+            : "";
+      if (isHomeScreenStatus(status)) {
+        setHomeStatus(status);
+      }
+    };
+    const bg = telegram.themeParams?.bg_color || "#121212";
+    document.documentElement.style.setProperty("--tg-bg", bg);
+    telegram.setHeaderColor?.(bg);
+    telegram.setBackgroundColor?.(bg);
+    telegram.disableVerticalSwipes?.();
+    telegram.enableClosingConfirmation?.();
     telegram.expand();
-    const bg = telegram.themeParams?.bg_color;
-    if (bg) {
-      document.documentElement.style.setProperty("--tg-bg", bg);
+    try {
+      telegram.requestFullscreen?.();
+    } catch {
+      telegram.expand();
     }
+    syncViewport();
+    telegram.onEvent?.("viewportChanged", syncViewport);
+    telegram.onEvent?.("homeScreenAdded", handleHomeScreenAdded);
+    telegram.onEvent?.("homeScreenChecked", handleHomeScreenChecked);
+    telegram.checkHomeScreenStatus?.(setHomeStatus);
+    telegram.ready();
     void recordMiniAppEvent("app_open", {
       user_id: telegram.initDataUnsafe?.user?.id ?? "",
+      fullscreen: Boolean(telegram.isFullscreen),
+      expanded: Boolean(telegram.isExpanded),
     });
+    return () => {
+      telegram.offEvent?.("viewportChanged", syncViewport);
+      telegram.offEvent?.("homeScreenAdded", handleHomeScreenAdded);
+      telegram.offEvent?.("homeScreenChecked", handleHomeScreenChecked);
+    };
   }, [telegram]);
 
   useEffect(() => {
@@ -120,14 +208,26 @@ export function App() {
           <p className="app-kicker">Assistant Bot</p>
           <h1 className="app-title">Mini App</h1>
         </div>
-        <button
-          className="icon-button"
-          type="button"
-          aria-label="Обновить статус"
-          onClick={() => void refreshState()}
-        >
-          <RefreshCw size={18} />
-        </button>
+        <div className="app-actions">
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Добавить на главный экран"
+            title={homeShortcutTitle(homeStatus)}
+            disabled={!telegram?.addToHomeScreen || homeStatus === "unsupported" || homeStatus === "added"}
+            onClick={addHomeShortcut}
+          >
+            <Home size={18} />
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="Обновить статус"
+            onClick={() => void refreshState()}
+          >
+            <RefreshCw size={18} />
+          </button>
+        </div>
       </header>
 
       <PixelAssistant state={assistantState} />
@@ -141,7 +241,7 @@ export function App() {
           onRefresh={refreshState}
         />
       )}
-      {activeTab === "assistant" && <AssistantPanel />}
+      {activeTab === "assistant" && <AssistantPanel onAsk={askAssistant} />}
       {activeTab === "finance" && (
         <FinancePanel
           state={miniState?.finance}
@@ -177,6 +277,20 @@ export function App() {
       </div>
     </main>
   );
+}
+
+function isHomeScreenStatus(value: string): value is HomeScreenStatus {
+  return value === "unsupported" || value === "unknown" || value === "added" || value === "missed";
+}
+
+function homeShortcutTitle(status: HomeScreenStatus | ""): string {
+  if (status === "added") {
+    return "Уже на главном экране";
+  }
+  if (status === "unsupported") {
+    return "Недоступно на этом устройстве";
+  }
+  return "Добавить на главный экран";
 }
 
 function formatMiniAppError(error: unknown): string {

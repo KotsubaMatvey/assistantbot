@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assistant Bot - инструкция пользования</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f4ee;
+      --surface: #ffffff;
+      --ink: #222426;
+      --muted: #69707a;
+      --line: #ded8cc;
+      --accent: #275f8f;
+      --accent-soft: #e6f0f8;
+      --ok-soft: #e9f5ea;
+      --warn-soft: #fff1d7;
+      --code: #1f2933;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      width: min(980px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+
+    header {
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-weight: 750;
+      text-transform: uppercase;
+      font-size: 13px;
+      letter-spacing: .02em;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 54px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 22px 0 0;
+    }
+
+    nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    section {
+      margin-top: 34px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 26px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 19px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ol,
+    ul {
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 7px 0;
+    }
+
+    .callout,
+    .step,
+    .example {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 14px 0;
+    }
+
+    .callout {
+      background: var(--accent-soft);
+      border-color: #c8dce9;
+    }
+
+    .ok {
+      background: var(--ok-soft);
+      border-color: #cbe5cd;
+    }
+
+    .warn {
+      background: var(--warn-soft);
+      border-color: #efd28b;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    code,
+    pre {
+      color: var(--code);
+      background: #eef1f2;
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: .93em;
+    }
+
+    code {
+      padding: 2px 5px;
+    }
+
+    pre {
+      margin: 10px 0 0;
+      padding: 12px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
+    .quick-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .quick-list a {
+      display: block;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    footer {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        width: min(100% - 24px, 980px);
+        padding-top: 18px;
+      }
+
+      .grid,
+      .quick-list {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">Assistant Bot</p>
+      <h1>Инструкция пользования</h1>
+      <p class="lead">
+        Пользуйся ботом как рабочей памятью в Telegram: пиши обычным текстом, а команды применяй
+        для поиска, планирования, контроля сессии, Mini App, бюджета, дома, рынков и покупок.
+      </p>
+      <nav aria-label="Навигация">
+        <a href="./bot_capabilities.html">Функции и команды</a>
+        <a href="#start">Быстрый старт</a>
+        <a href="#memory">Память</a>
+        <a href="#daily">День и задачи</a>
+        <a href="#miniapp">Mini App</a>
+        <a href="#examples">Примеры</a>
+      </nav>
+    </header>
+
+    <section id="start">
+      <h2>Быстрый старт</h2>
+      <div class="callout">
+        <p><strong>Главное правило:</strong> если нужно просто сохранить мысль, факт, задачу, решение или ссылку, отправь сообщение без команды. Бот сам положит его в память.</p>
+      </div>
+      <ol>
+        <li>Открой чат с ботом и отправь <code>/start</code>.</li>
+        <li>Проверь полный список команд через <code>/help</code>.</li>
+        <li>Напиши обычным сообщением первую заметку, например: <code>Идея: проверить бюджет на май и подписки</code>.</li>
+        <li>Открой текущие дела через <code>/agenda</code>, <code>/today</code> или <code>/tasks</code>.</li>
+        <li>Проверь состояние ассистента через <code>/status</code>.</li>
+        <li>Когда переписка стала длинной, отправь <code>/compact</code>, чтобы сохранить сводку.</li>
+      </ol>
+      <div class="quick-list">
+        <a href="#memory">Как сохранять память</a>
+        <a href="#daily">Как вести задачи</a>
+        <a href="#finance">Как вести бюджет</a>
+        <a href="#shopping">Как сравнивать цены</a>
+        <a href="#admin">Что доступно админу</a>
+        <a href="./bot_capabilities.html#commands">Все команды</a>
+      </div>
+    </section>
+
+    <section id="memory">
+      <h2>Память и поиск</h2>
+      <div class="grid">
+        <article class="step">
+          <h3>Сохранить заметку</h3>
+          <p>Отправь обычный текст или используй явную команду.</p>
+          <pre>/capture Важная мысль по проекту
+/remember Надо сравнить тарифы хостинга</pre>
+        </article>
+        <article class="step">
+          <h3>Найти контекст</h3>
+          <p>Используй поиск по памяти или вопрос к памяти.</p>
+          <pre>/memory хостинг
+/ask что я решил по хостингу?
+/context бюджет</pre>
+        </article>
+        <article class="step">
+          <h3>Разделить пространства</h3>
+          <p>Spaces помогают отделить личное, работу, семью или проекты.</p>
+          <pre>/spaces
+/space work
+[home] купить крупу и молоко</pre>
+        </article>
+        <article class="step">
+          <h3>Сохранить источник</h3>
+          <p>Добавь URL, RSS или GitHub-источник и синхронизируй его.</p>
+          <pre>/source_add rss https://example.com/feed.xml
+/source_list
+/source_sync</pre>
+        </article>
+      </div>
+      <div class="callout ok">
+        <p>Память хранится локально в vault из <code>OBSIDIAN_VAULT_PATH</code>. Экспорт доступен через <code>/export_memory</code>, импорт через <code>/import_memory</code>.</p>
+      </div>
+    </section>
+
+    <section id="daily">
+      <h2>День, задачи и напоминания</h2>
+      <ol>
+        <li>Создай задачу: <code>/task подготовить список покупок</code>.</li>
+        <li>Добавь напоминание: <code>/remind tomorrow 10:00 оплатить подписку</code>.</li>
+        <li>Посмотри текущие дела: <code>/agenda</code>, <code>/tasks</code>, <code>/today_tasks</code>.</li>
+        <li>Закрой задачу: <code>/done 1</code> или <code>/done &lt;task_id&gt;</code>.</li>
+        <li>Собери утренний обзор: <code>/morning</code>.</li>
+        <li>Собери вечерний обзор: <code>/evening</code>.</li>
+        <li>Собери план недели: <code>/week</code>.</li>
+      </ol>
+      <div class="example">
+        <h3>Периодическая задача</h3>
+        <p>Jobs нужны для повторяющихся действий: digest, RSS, market brief, morning report, price alerts и других шаблонов.</p>
+        <pre>/job_add daily 09:00 morning Утренний обзор
+/jobs
+/job_runs
+/job_delete job_123</pre>
+      </div>
+    </section>
+
+    <section id="session">
+      <h2>Управление сессией ассистента</h2>
+      <div class="grid">
+        <article class="step">
+          <h3>Статус и режим</h3>
+          <pre>/status
+/mode researcher
+/trace on
+/verbose off</pre>
+        </article>
+        <article class="step">
+          <h3>Новая сессия и сжатие</h3>
+          <pre>/new
+/compact
+/session_summary</pre>
+        </article>
+        <article class="step">
+          <h3>Помощники</h3>
+          <pre>/assistants
+/assistant_pick secretary
+/assistant_pick buyer
+/assistant_pick market_analyst</pre>
+        </article>
+        <article class="step">
+          <h3>Capabilities</h3>
+          <pre>/capability_center
+/assistant_capabilities
+/usage</pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="miniapp">
+      <h2>Mini App</h2>
+      <p>Mini App открывается кнопкой над полем ввода Telegram или командой <code>/mini_app</code>. Если live API недоступен, часть действий отправляется обратно в бот через Telegram WebApp payload.</p>
+      <div class="grid">
+        <article class="step">
+          <h3>Today</h3>
+          <p>Смотри agenda, digest, задачи, напоминания, заметки и фокус дня.</p>
+        </article>
+        <article class="step">
+          <h3>Finance</h3>
+          <p>Добавляй расходы и доходы, обновляй счета, подписки и чеки.</p>
+        </article>
+        <article class="step">
+          <h3>Memory</h3>
+          <p>Проверяй здоровье памяти, объекты, источники и события.</p>
+        </article>
+        <article class="step">
+          <h3>Shopping и Markets</h3>
+          <p>Отправляй корзины на сравнение, обновляй market watch и работай с быстрыми действиями.</p>
+        </article>
+      </div>
+      <div class="callout warn">
+        <p>Для production нужен HTTPS URL в <code>TG_MINI_APP_URL</code>. Для локального превью используется <code>VITE_MINI_APP_API_BASE_URL</code> и dev user id.</p>
+      </div>
+    </section>
+
+    <section id="finance">
+      <h2>Бюджет, чеки и cashflow</h2>
+      <ol>
+        <li>Задай бюджет месяца: <code>/budget_set 2026-05 60000</code>.</li>
+        <li>Добавь расход: <code>/expense 1200 food продукты</code>.</li>
+        <li>Добавь доход: <code>/income 100000 salary май</code>.</li>
+        <li>Добавь счет: <code>/accounts карта 45000</code>.</li>
+        <li>Добавь подписку: <code>/subscriptions музыка 299</code>.</li>
+        <li>Сохрани чек: <code>/receipt молоко 89, хлеб 55, сыр 240</code>.</li>
+        <li>Проверь бюджет и прогноз: <code>/budget</code>, <code>/cashflow</code>.</li>
+      </ol>
+    </section>
+
+    <section id="home">
+      <h2>Дом, склад и семья</h2>
+      <div class="grid">
+        <article class="step">
+          <h3>Домашний склад</h3>
+          <pre>/pantry_add молоко 2 шт 2026-05-23
+/pantry
+/pantry_use молоко 1
+/pantry_plan</pre>
+        </article>
+        <article class="step">
+          <h3>Семейный список</h3>
+          <pre>/family_create Home
+/family
+/family_add купить батарейки
+/family_join ABC123</pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="shopping">
+      <h2>Покупки и цены</h2>
+      <p>Shopping skill вторичен: он помогает сравнить корзину по сохраненным или обновленным ценам, но не гарантирует финальную цену на кассе.</p>
+      <ol>
+        <li>Выбери магазины и карты лояльности через <code>/settings</code>.</li>
+        <li>Отправь корзину командой <code>/prices</code> или через Mini App.</li>
+        <li>Повтори последнюю корзину через <code>/last</code>.</li>
+        <li>Добавь ценовой сигнал: <code>/watch_price кофе 500</code>.</li>
+        <li>Проверь сигналы: <code>/price_alerts</code> и <code>/check_alerts</code>.</li>
+      </ol>
+      <div class="example">
+        <h3>Пример корзины</h3>
+        <pre>/prices
+молоко 2
+хлеб
+сыр 300 г
+кофе 1</pre>
+      </div>
+      <div class="callout warn">
+        <p>Данные магазинов зависят от региона, наличия, карты лояльности, акций и времени обновления. Для админского обновления цен используются scraping-команды.</p>
+      </div>
+    </section>
+
+    <section id="markets">
+      <h2>Рынки</h2>
+      <p>Для быстрого рыночного обзора используй две команды:</p>
+      <pre>/markets
+/market_brief</pre>
+      <p>Результат сохраняется в память как market note, чтобы потом его можно было найти через <code>/memory</code> или <code>/context</code>.</p>
+    </section>
+
+    <section id="safety">
+      <h2>Удаление, подтверждения и безопасность</h2>
+      <div class="grid">
+        <article class="step">
+          <h3>Удалить заметку</h3>
+          <p>Удаление требует подтверждения.</p>
+          <pre>/delete_memory note_id
+/approve approval_code</pre>
+        </article>
+        <article class="step">
+          <h3>Голосовые заметки</h3>
+          <p>Автоматический STT пока не подключен. Отправь расшифровку или voice caption.</p>
+          <pre>/voice_note текст расшифровки</pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="admin">
+      <h2>Для администратора</h2>
+      <p>Админ-команды доступны только Telegram ID из <code>ADMIN_TELEGRAM_IDS</code>.</p>
+      <ol>
+        <li>Проверь окружение: <code>/admin_doctor</code>.</li>
+        <li>Проверь настройки деплоя: <code>/admin_deploy_check</code>.</li>
+        <li>Проверь audit log: <code>/admin_audit</code>.</li>
+        <li>Одобри нового пользователя: <code>/pairing_approve &lt;code&gt;</code>.</li>
+        <li>Создай backup: <code>/admin_backup</code>.</li>
+        <li>Обнови цены: <code>/admin_refresh_prices</code> или <code>/admin_scrape_store &lt;store_slug&gt;</code>.</li>
+      </ol>
+    </section>
+
+    <section id="examples">
+      <h2>Готовые сценарии</h2>
+      <div class="example">
+        <h3>Сохранить решение и вернуться к нему позже</h3>
+        <pre>/decide Покупать VPS сейчас; взять минимальный тариф; подождать скидку
+/decisions
+/context VPS</pre>
+      </div>
+      <div class="example">
+        <h3>Разобрать неделю</h3>
+        <pre>/weekly_summary
+/week
+/task_search проект
+/compact</pre>
+      </div>
+      <div class="example">
+        <h3>Подготовиться к покупке продуктов</h3>
+        <pre>/pantry_plan
+/prices молоко 2, хлеб, сыр, кофе
+/watch_price кофе 500
+/budget_plan</pre>
+      </div>
+      <div class="example">
+        <h3>Подключить источник и читать дайджест</h3>
+        <pre>/source_add rss https://example.com/feed.xml
+/source_sync
+/rss_digest
+/source_trust</pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>Если что-то не работает</h2>
+      <ul>
+        <li>Проверь <code>/status</code>, чтобы увидеть режим, trace, verbose, active space, jobs и Mini App status.</li>
+        <li>Проверь <code>/help</code>, чтобы убедиться в правильном формате команды.</li>
+        <li>Если команда админская, проверь <code>ADMIN_TELEGRAM_IDS</code>.</li>
+        <li>Если не работает Mini App, проверь <code>TG_MINI_APP_URL</code>, HTTPS и доступность API.</li>
+        <li>Если не обновляются цены, проверь scraping-диагностику через <code>/admin_logs</code> и <code>/admin_scraper_diag</code>.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Полный каталог команд находится в <a href="./bot_capabilities.html">bot_capabilities.html</a>.
+      Документ рассчитан на текущую версию проекта в <code>E:\assistantbot</code>.
+    </footer>
+  </main>
+</body>
+</html>

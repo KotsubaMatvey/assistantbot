@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.config import Settings, get_settings
 from app.services.obsidian_memory import MemorySearchResult, ObsidianMemory
 
 
@@ -32,7 +33,8 @@ class AssistantThreadSnapshot:
     capabilities: list[AssistantCapability]
 
 
-def assistant_capabilities() -> list[AssistantCapability]:
+def assistant_capabilities(settings: Settings | None = None) -> list[AssistantCapability]:
+    runtime_settings = settings or get_settings()
     return [
         AssistantCapability("markdown_memory", True, "Local markdown-backed memory"),
         AssistantCapability("sqlite_fts_search", True, "SQLite FTS5 full-text search"),
@@ -44,7 +46,11 @@ def assistant_capabilities() -> list[AssistantCapability]:
             True,
             "Optional pairing and allowlist access control",
         ),
-        AssistantCapability("llm_answers", False, "LLM layer is intentionally not connected yet"),
+        AssistantCapability(
+            "llm_answers",
+            runtime_settings.llm_enabled,
+            "Optional cloud LLM provider pool for grounded answers",
+        ),
         AssistantCapability(
             "semantic_lite_search",
             True,

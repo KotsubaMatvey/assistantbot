@@ -92,6 +92,10 @@ export type MiniAppMarkets = {
   data_gaps: string[];
 };
 
+export type MiniAppAssistantAnswer = {
+  answer: string;
+};
+
 const apiBase = (import.meta.env.VITE_MINI_APP_API_BASE_URL as string | undefined) ?? "";
 const devUserId = (import.meta.env.VITE_MINI_APP_DEV_USER_ID as string | undefined) ?? "";
 
@@ -123,6 +127,13 @@ export async function postMiniAppMutation(
 export async function loadMiniAppMarkets(): Promise<MiniAppMarkets> {
   const suffix = devUserId ? `?user_id=${encodeURIComponent(devUserId)}` : "";
   return apiRequest<MiniAppMarkets>(`/api/miniapp/markets${suffix}`, { method: "GET" });
+}
+
+export async function postMiniAppAssistant(text: string): Promise<MiniAppAssistantAnswer> {
+  return apiRequest<MiniAppAssistantAnswer>("/api/miniapp/assistant", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
 }
 
 export async function recordMiniAppEvent(

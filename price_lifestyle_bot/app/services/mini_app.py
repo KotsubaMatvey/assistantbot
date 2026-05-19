@@ -100,6 +100,7 @@ def mini_app_manifest(url: str) -> MiniAppManifest:
             "skills",
             "safe_assistants",
             "pixel_assistant",
+            "assistant_chat",
             "assistant_status",
             "capability_center",
             "memory_tree",

@@ -134,6 +134,10 @@ def test_help_text_can_include_admin_commands() -> None:
     assert "/admin_secret_scan" in admin_text
     assert "/admin_audit" in admin_text
     assert "/admin_onboarding" in admin_text
+    assert "/llm_status" in admin_text
+    assert "/llm_models" in admin_text
+    assert "/llm_reset" in admin_text
+    assert "/llm_test" in admin_text
 
 
 def test_resolve_command_accepts_slash_prefix() -> None:

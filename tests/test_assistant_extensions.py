@@ -287,6 +287,7 @@ def test_conversation_summary_and_mini_app_manifest() -> None:
     assert "memory_tree" in manifest.features
     assert "connected_sources" in manifest.features
     assert "pixel_assistant" in manifest.features
+    assert "assistant_chat" in manifest.features
     assert "lifestyle_context" in manifest.features
     assert "finance" in manifest.features
     assert "mini_app_event_log" in manifest.features

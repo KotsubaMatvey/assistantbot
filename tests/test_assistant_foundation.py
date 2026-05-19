@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+from app.config import Settings
 from app.db.repositories.sessions import build_session_key
 from app.services.access_control import AccessControlStore
 from app.services.action_approvals import ActionApprovalStore
@@ -196,7 +197,10 @@ def test_assistant_contract_exposes_no_llm_capabilities(tmp_path) -> None:
     memory = ObsidianMemory(str(tmp_path))
     memory.remember_user_note(user_id=123, text="contract context")
 
-    capabilities = {capability.name: capability.enabled for capability in assistant_capabilities()}
+    capabilities = {
+        capability.name: capability.enabled
+        for capability in assistant_capabilities(settings=Settings(llm_enabled=False))
+    }
     snapshot = build_thread_snapshot(memory=memory, user_id=123, query="contract")
 
     assert capabilities["sqlite_fts_search"] is True

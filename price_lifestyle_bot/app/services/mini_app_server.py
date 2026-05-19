@@ -12,6 +12,7 @@ from aiohttp import web
 from app.config import Settings
 from app.logging_config import get_logger
 from app.services.audit_log import AuditLogStore
+from app.services.llm_client import answer_question_with_llm
 from app.services.market_watch import analyze_market_watch, fetch_market_watch
 from app.services.mini_app_state import (
     add_mini_app_note,
@@ -67,6 +68,7 @@ def create_mini_app_web_app(settings: Settings) -> web.Application:
     app.router.add_get("/api/health", _health)
     app.router.add_get("/api/miniapp/state", _state)
     app.router.add_get("/api/miniapp/markets", _markets)
+    app.router.add_post("/api/miniapp/assistant", _assistant)
     app.router.add_post("/api/miniapp/event", _event)
     app.router.add_post("/api/miniapp/finance/transaction", _finance_transaction)
     app.router.add_post("/api/miniapp/finance/account", _finance_account)
@@ -130,6 +132,33 @@ async def _event(request: web.Request) -> web.Response:
     detail = _event_detail(payload.get("data", {}))
     _record_mini_app_event(request, user_id, f"mini_app_{name}", detail)
     return web.json_response({"ok": True})
+
+
+async def _assistant(request: web.Request) -> web.Response:
+    user_id = _user_id_from_request(request)
+    payload = await _json_payload(request)
+    question = str(payload.get("text", "")).strip()
+    if not question:
+        raise web.HTTPBadRequest(text="assistant text is empty")
+    if len(question) > 2000:
+        raise web.HTTPBadRequest(text="assistant text is too large")
+    settings = _settings(request)
+    memory = ObsidianMemory(settings.obsidian_vault_path)
+    answer = await answer_question_with_llm(
+        memory=memory,
+        user_id=user_id,
+        question=question,
+        settings=settings,
+    )
+    if answer is None:
+        answer = memory.ask_user_memory(user_id=user_id, question=question)
+    _record_mini_app_event(
+        request,
+        user_id,
+        "mini_app_assistant_query",
+        f"chars={len(question)} answer_chars={len(answer)}",
+    )
+    return web.json_response({"answer": answer[:3900]})
 
 
 async def _finance_transaction(request: web.Request) -> web.Response:

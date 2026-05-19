@@ -188,6 +188,34 @@ ASSISTANT_GROUP_TRIGGER_POLICY=mention
 ASSISTANT_DEFAULT_MODE=secretary
 ```
 
+Optional free cloud LLM pool:
+
+```env
+LLM_ENABLED=false
+LLM_CLOUD_CONTEXT_ALLOWED=false
+LLM_CONTEXT_MODE=snippets
+LLM_PROVIDER_ORDER=groq,cerebras,openrouter,mistral,github_models,zai,nvidia,llm7,ovh,siliconflow
+LLM_GROQ_API_KEY=
+LLM_CEREBRAS_API_KEY=
+LLM_OPENROUTER_API_KEY=
+LLM_MISTRAL_API_KEY=
+LLM_GITHUB_MODELS_TOKEN=
+LLM_ZAI_API_KEY=
+LLM_NVIDIA_API_KEY=
+LLM_LLM7_API_KEY=
+LLM_OVH_API_KEY=
+LLM_SILICONFLOW_API_KEY=
+```
+
+When `LLM_ENABLED=true`, `/ask` can use the first available configured cloud
+provider and automatically falls through to the next model/provider on
+quota/rate-limit errors. Memory context is not sent to cloud providers unless
+`LLM_CLOUD_CONTEXT_ALLOWED=true`; otherwise `/ask` keeps the existing local
+rule-based answer. `LLM_CONTEXT_MODE` accepts `none`, `snippets`, `redacted`, or
+`full`. For providers not covered by the built-in presets, set
+`LLM_PROVIDER_SPECS_JSON` to a JSON list of OpenAI-compatible endpoints. Built-in
+`LLM_*_MODEL` values may contain a comma-separated model fallback list.
+
 Feature flags:
 
 ```env
@@ -305,6 +333,10 @@ Admin commands require a Telegram ID from `ADMIN_TELEGRAM_IDS`:
 - `/admin_backup`
 - `/admin_logs`
 - `/admin_deploy_check`
+- `/llm_status`
+- `/llm_models`
+- `/llm_reset [provider]`
+- `/llm_test [prompt]`
 
 ## Tests And Quality
 

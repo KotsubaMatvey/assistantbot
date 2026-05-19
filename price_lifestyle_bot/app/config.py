@@ -42,6 +42,51 @@ class Settings(BaseSettings):
     assistant_context_visibility: str = "allowlist"
     assistant_group_trigger_policy: str = "mention"
     assistant_default_mode: str = "secretary"
+    llm_enabled: bool = False
+    llm_cloud_context_allowed: bool = False
+    llm_context_mode: str = "snippets"
+    llm_timeout_seconds: float = 30.0
+    llm_max_context_notes: int = 5
+    llm_max_output_tokens: int = 700
+    llm_temperature: float = 0.2
+    llm_daily_limit_cooldown_hours: int = 24
+    llm_provider_order: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: [
+            "groq",
+            "cerebras",
+            "openrouter",
+            "mistral",
+            "github_models",
+            "zai",
+            "nvidia",
+            "llm7",
+            "ovh",
+            "siliconflow",
+        ]
+    )
+    llm_provider_specs_json: str = ""
+    llm_groq_api_key: str = ""
+    llm_groq_model: str = "llama-3.1-8b-instant"
+    llm_cerebras_api_key: str = ""
+    llm_cerebras_model: str = "llama3.1-8b"
+    llm_openrouter_api_key: str = ""
+    llm_openrouter_model: str = "openrouter/free"
+    llm_openrouter_site_url: str = ""
+    llm_openrouter_app_name: str = "Assistant Bot"
+    llm_mistral_api_key: str = ""
+    llm_mistral_model: str = "mistral-small-latest"
+    llm_github_models_token: str = ""
+    llm_github_models_model: str = "openai/gpt-4.1-mini"
+    llm_zai_api_key: str = ""
+    llm_zai_model: str = "glm-4.5-flash"
+    llm_nvidia_api_key: str = ""
+    llm_nvidia_model: str = "nvidia/nemotron-3-nano-30b-a3b"
+    llm_llm7_api_key: str = ""
+    llm_llm7_model: str = "mistral-small-3.1-24b"
+    llm_ovh_api_key: str = ""
+    llm_ovh_model: str = "Meta-Llama-3_1-8B-Instruct"
+    llm_siliconflow_api_key: str = ""
+    llm_siliconflow_model: str = "Qwen/Qwen3-8B"
     tg_mini_app_url: str = ""
     mini_app_api_enabled: bool = True
     mini_app_api_host: str = "0.0.0.0"
@@ -73,6 +118,13 @@ class Settings(BaseSettings):
     @field_validator("bot_enabled_features", "bot_disabled_features", mode="before")
     @classmethod
     def parse_feature_names(cls, value: object) -> list[str] | object:
+        if isinstance(value, str):
+            return _parse_feature_names(value)
+        return value
+
+    @field_validator("llm_provider_order", mode="before")
+    @classmethod
+    def parse_llm_provider_order(cls, value: object) -> list[str] | object:
         if isinstance(value, str):
             return _parse_feature_names(value)
         return value
@@ -119,6 +171,55 @@ class Settings(BaseSettings):
                     "ASSISTANT_GROUP_TRIGGER_POLICY", "mention"
                 ),
                 "assistant_default_mode": os.getenv("ASSISTANT_DEFAULT_MODE", "secretary"),
+                "llm_enabled": os.getenv("LLM_ENABLED", "false").lower() == "true",
+                "llm_cloud_context_allowed": (
+                    os.getenv("LLM_CLOUD_CONTEXT_ALLOWED", "false").lower() == "true"
+                ),
+                "llm_context_mode": os.getenv("LLM_CONTEXT_MODE", "snippets"),
+                "llm_timeout_seconds": float(os.getenv("LLM_TIMEOUT_SECONDS", "30")),
+                "llm_max_context_notes": int(os.getenv("LLM_MAX_CONTEXT_NOTES", "5")),
+                "llm_max_output_tokens": int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "700")),
+                "llm_temperature": float(os.getenv("LLM_TEMPERATURE", "0.2")),
+                "llm_daily_limit_cooldown_hours": int(
+                    os.getenv("LLM_DAILY_LIMIT_COOLDOWN_HOURS", "24")
+                ),
+                "llm_provider_order": _parse_feature_names(
+                    os.getenv(
+                        "LLM_PROVIDER_ORDER",
+                        "groq,cerebras,openrouter,mistral,github_models,zai,nvidia,llm7,ovh,siliconflow",
+                    )
+                ),
+                "llm_provider_specs_json": os.getenv("LLM_PROVIDER_SPECS_JSON", ""),
+                "llm_groq_api_key": os.getenv("LLM_GROQ_API_KEY", ""),
+                "llm_groq_model": os.getenv("LLM_GROQ_MODEL", "llama-3.1-8b-instant"),
+                "llm_cerebras_api_key": os.getenv("LLM_CEREBRAS_API_KEY", ""),
+                "llm_cerebras_model": os.getenv("LLM_CEREBRAS_MODEL", "llama3.1-8b"),
+                "llm_openrouter_api_key": os.getenv("LLM_OPENROUTER_API_KEY", ""),
+                "llm_openrouter_model": os.getenv("LLM_OPENROUTER_MODEL", "openrouter/free"),
+                "llm_openrouter_site_url": os.getenv("LLM_OPENROUTER_SITE_URL", ""),
+                "llm_openrouter_app_name": os.getenv(
+                    "LLM_OPENROUTER_APP_NAME", "Assistant Bot"
+                ),
+                "llm_mistral_api_key": os.getenv("LLM_MISTRAL_API_KEY", ""),
+                "llm_mistral_model": os.getenv("LLM_MISTRAL_MODEL", "mistral-small-latest"),
+                "llm_github_models_token": os.getenv("LLM_GITHUB_MODELS_TOKEN", ""),
+                "llm_github_models_model": os.getenv(
+                    "LLM_GITHUB_MODELS_MODEL", "openai/gpt-4.1-mini"
+                ),
+                "llm_zai_api_key": os.getenv("LLM_ZAI_API_KEY", ""),
+                "llm_zai_model": os.getenv("LLM_ZAI_MODEL", "glm-4.5-flash"),
+                "llm_nvidia_api_key": os.getenv("LLM_NVIDIA_API_KEY", ""),
+                "llm_nvidia_model": os.getenv(
+                    "LLM_NVIDIA_MODEL", "nvidia/nemotron-3-nano-30b-a3b"
+                ),
+                "llm_llm7_api_key": os.getenv("LLM_LLM7_API_KEY", ""),
+                "llm_llm7_model": os.getenv("LLM_LLM7_MODEL", "mistral-small-3.1-24b"),
+                "llm_ovh_api_key": os.getenv("LLM_OVH_API_KEY", ""),
+                "llm_ovh_model": os.getenv("LLM_OVH_MODEL", "Meta-Llama-3_1-8B-Instruct"),
+                "llm_siliconflow_api_key": os.getenv("LLM_SILICONFLOW_API_KEY", ""),
+                "llm_siliconflow_model": os.getenv(
+                    "LLM_SILICONFLOW_MODEL", "Qwen/Qwen3-8B"
+                ),
                 "tg_mini_app_url": os.getenv("TG_MINI_APP_URL", ""),
                 "mini_app_api_enabled": (
                     os.getenv("MINI_APP_API_ENABLED", "true").lower() == "true"

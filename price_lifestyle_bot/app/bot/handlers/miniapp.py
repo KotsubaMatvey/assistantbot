@@ -48,6 +48,7 @@ from app.bot.handlers.shopping import _handle_basket
 from app.config import get_settings
 from app.logging_config import get_logger
 from app.services.audit_log import AuditLogStore
+from app.services.llm_client import answer_freeform_with_llm
 from app.services.mini_app import parse_mini_app_payload
 from app.services.mini_app_state import (
     add_mini_app_note,
@@ -94,7 +95,8 @@ async def mini_app_data_handler(message: Message) -> None:
             "mini_app_assistant_message",
             f"chars={len(payload.text)}",
         )
-        await message.answer(_pixel_assistant_reply(payload.text))
+        llm_answer = await answer_freeform_with_llm(text=payload.text, settings=settings)
+        await message.answer((llm_answer or _pixel_assistant_reply(payload.text))[:3900])
         return
     if payload.type == "task_create":
         add_mini_app_task(

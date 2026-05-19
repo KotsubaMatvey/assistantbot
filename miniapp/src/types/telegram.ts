@@ -20,6 +20,8 @@ export type TelegramPayload =
   | { type: "source_delete"; id: string }
   | { type: "source_sync"; id?: string };
 
+export type HomeScreenStatus = "unsupported" | "unknown" | "added" | "missed";
+
 export type BotCommand =
   | "markets"
   | "market_brief"
@@ -74,8 +76,21 @@ export type TelegramWebApp = {
     text_color?: string;
     button_color?: string;
   };
+  viewportHeight?: number;
+  stableViewportHeight?: number;
+  isExpanded?: boolean;
+  isFullscreen?: boolean;
   ready: () => void;
   expand: () => void;
+  requestFullscreen?: () => void;
+  addToHomeScreen?: () => void;
+  checkHomeScreenStatus?: (callback?: (status: HomeScreenStatus) => void) => void;
+  setHeaderColor?: (color: string) => void;
+  setBackgroundColor?: (color: string) => void;
+  disableVerticalSwipes?: () => void;
+  enableClosingConfirmation?: () => void;
+  onEvent?: (eventType: string, eventHandler: (...args: unknown[]) => void) => void;
+  offEvent?: (eventType: string, eventHandler: (...args: unknown[]) => void) => void;
   sendData: (data: string) => void;
 };
 

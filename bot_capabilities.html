@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assistant Bot - функции и возможности</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f5f1;
+      --surface: #ffffff;
+      --ink: #202124;
+      --muted: #646a73;
+      --line: #ddd8ce;
+      --accent: #1f7a6d;
+      --accent-soft: #e4f2ef;
+      --warn-soft: #fff2d6;
+      --admin-soft: #f5e6ea;
+      --code: #263238;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+
+    header {
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+      font-size: 13px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 56px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 850px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 22px 0 0;
+    }
+
+    nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    section {
+      margin-top: 32px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 26px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 19px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card,
+    .note {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .card p,
+    .note p {
+      color: var(--muted);
+    }
+
+    .note {
+      background: var(--accent-soft);
+      border-color: #c7e4dd;
+    }
+
+    .warning {
+      background: var(--warn-soft);
+      border-color: #efd48b;
+    }
+
+    .admin {
+      background: var(--admin-soft);
+      border-color: #e0bbc4;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 4px 9px;
+      background: #fbfaf7;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #fbfaf7;
+      color: var(--muted);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .02em;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code {
+      color: var(--code);
+      background: #edf0ee;
+      border-radius: 6px;
+      padding: 2px 5px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: .92em;
+    }
+
+    .command {
+      white-space: nowrap;
+      font-weight: 700;
+    }
+
+    .category-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 28px 0 10px;
+    }
+
+    .category-title span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    footer {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .page {
+        width: min(100% - 24px, 1180px);
+        padding-top: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">Assistant Bot</p>
+      <h1>Функции и возможности бота</h1>
+      <p class="lead">
+        Этот справочник собран по текущему коду проекта. Бот работает как персональный second brain:
+        сохраняет обычные сообщения в локальную память, помогает с задачами, источниками, бюджетом,
+        домом, рынками, покупками и дает операторские команды для контроля сессий.
+      </p>
+      <nav aria-label="Навигация">
+        <a href="./bot_usage_guide.html">Инструкция пользования</a>
+        <a href="#core">Основные возможности</a>
+        <a href="#miniapp">Mini App</a>
+        <a href="#commands">Все команды</a>
+        <a href="#admin">Админ-команды</a>
+      </nav>
+    </header>
+
+    <section id="core">
+      <h2>Основные возможности</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Second brain память</h3>
+          <p>Обычный текст сохраняется как заметка. Можно явно сохранять мысли, задачи, решения, ссылки, людей, предпочтения, важные пины и голосовые расшифровки.</p>
+          <div class="pill-row">
+            <span class="pill">Markdown vault</span>
+            <span class="pill">SQLite/FTS индекс</span>
+            <span class="pill">Spaces</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Поиск и контекст</h3>
+          <p>Бот ищет заметки, показывает сегодняшнюю ленту, открытые задачи, недавние записи, коллекции, источники и отвечает на вопросы по локальной памяти.</p>
+          <div class="pill-row">
+            <span class="pill">/memory</span>
+            <span class="pill">/ask</span>
+            <span class="pill">/context</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Операторский контроль</h3>
+          <p>Есть отдельные команды для новой логической сессии, сжатия контекста, статуса, режима ассистента, trace-режима, подробности ответов и выбора помощника.</p>
+          <div class="pill-row">
+            <span class="pill">/status</span>
+            <span class="pill">/new</span>
+            <span class="pill">/compact</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Задачи и автоматизации</h3>
+          <p>Бот ведет задачи, напоминания, отложенные follow-up, периодические jobs, утренний briefing, вечерний review и недельный план.</p>
+          <div class="pill-row">
+            <span class="pill">/agenda</span>
+            <span class="pill">/job_add</span>
+            <span class="pill">/morning</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Источники и обучение</h3>
+          <p>Можно добавлять RSS, GitHub и URL-источники, синхронизировать их в память, читать RSS-дайджесты, сохранять веб-страницы и смотреть доверие к источникам.</p>
+          <div class="pill-row">
+            <span class="pill">rss</span>
+            <span class="pill">github</span>
+            <span class="pill">url</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Дом, бюджет и семья</h3>
+          <p>Поддерживаются домашний склад, списание продуктов, план докупки, чеки, бюджет месяца, доходы, расходы, счета, подписки, cashflow и семейный общий список.</p>
+          <div class="pill-row">
+            <span class="pill">/pantry</span>
+            <span class="pill">/budget</span>
+            <span class="pill">/family</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Рынки</h3>
+          <p>Бот получает BTC, BTC.D и основные мировые индексы, формирует market watch, market brief, sentiment, risk regime и сохраняет рыночные заметки в память.</p>
+          <div class="pill-row">
+            <span class="pill">BTC</span>
+            <span class="pill">BTC.D</span>
+            <span class="pill">индексы</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Покупки и цены</h3>
+          <p>Shopping skill сравнивает корзину по магазинам, помнит последнюю корзину, учитывает настройки магазинов, следит за ценовыми сигналами и подсказывает выгодные докупки.</p>
+          <div class="pill-row">
+            <span class="pill">Smart</span>
+            <span class="pill">Магнит</span>
+            <span class="pill">SPAR</span>
+            <span class="pill">5ka</span>
+            <span class="pill">Fix Price</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Безопасные локальные действия</h3>
+          <p>Локальные tools, удаление заметок через подтверждение, audit log, access allowlist, pairing-коды и админ-диагностика отделены от обычного пользовательского потока.</p>
+          <div class="pill-row">
+            <span class="pill">/tools</span>
+            <span class="pill">/approve</span>
+            <span class="pill">audit</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="miniapp">
+      <h2>Telegram Mini App</h2>
+      <div class="note">
+        <p>
+          Mini App открывается кнопкой над полем ввода Telegram или командой <code>/mini_app</code>, если задан
+          <code>TG_MINI_APP_URL</code>. В проекте это Vite + React + TypeScript интерфейс из папки <code>miniapp/</code>.
+        </p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <h3>Today</h3>
+          <p>Показывает agenda, дайджест дня, задачи, напоминания, заметки и фокусные элементы.</p>
+        </article>
+        <article class="card">
+          <h3>Assistant</h3>
+          <p>Пульт для команд ассистента: status, compact, new, agenda, today, tasks, context и похожие действия.</p>
+        </article>
+        <article class="card">
+          <h3>Finance</h3>
+          <p>Читает и обновляет счета, расходы, доходы, подписки, чеки, бюджет и прогноз cashflow.</p>
+        </article>
+        <article class="card">
+          <h3>Memory</h3>
+          <p>Показывает здоровье памяти, объекты, источники, события и позволяет добавлять, удалять и синхронизировать источники.</p>
+        </article>
+        <article class="card">
+          <h3>Shopping</h3>
+          <p>Отправляет корзину в бот для сравнения цен и поддерживает быстрые shopping-сценарии.</p>
+        </article>
+        <article class="card">
+          <h3>Markets</h3>
+          <p>Обновляет рыночные данные через backend API и показывает текущие сигналы.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Ограничения и условия работы</h2>
+      <div class="grid">
+        <article class="note">
+          <h3>Локальная память</h3>
+          <p>Основное хранилище находится в <code>OBSIDIAN_VAULT_PATH</code>. Бот сохраняет Markdown, локальные объекты, индексы и историю действий.</p>
+        </article>
+        <article class="note warning">
+          <h3>Внешняя сеть</h3>
+          <p>Сеть используется только для явных действий: <code>/learn_url</code>, RSS, market data, scraping и обновление цен.</p>
+        </article>
+        <article class="note warning">
+          <h3>Цены не гарантированы</h3>
+          <p>Публичные данные магазинов могут отличаться из-за региона, наличия, карты лояльности, акций и времени обновления.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="commands">
+      <h2>Все команды</h2>
+      <p>
+        В меню Telegram намеренно видны только <code>/start</code> и <code>/help</code>.
+        Остальные команды доступны вручную и документируются в <code>/help</code>.
+      </p>
+
+      <div class="category-title">
+        <h3>Основное</h3>
+        <span>базовый вход</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/start</code></td><td>Первый запуск и краткая инструкция.</td></tr>
+            <tr><td class="command"><code>/help</code></td><td>Список команд second brain.</td></tr>
+            <tr><td class="command"><code>/mini_app</code></td><td>Открыть пульт Mini App.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Ассистент</h3>
+        <span>сессии, режимы и обзоры</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/morning</code></td><td>Утренний briefing: agenda, память, рыночные сигналы и фокус.</td></tr>
+            <tr><td class="command"><code>/evening</code></td><td>Вечерний review: день, задачи и деньги.</td></tr>
+            <tr><td class="command"><code>/week</code></td><td>План недели из памяти, задач и бюджета.</td></tr>
+            <tr><td class="command"><code>/status</code></td><td>Краткий статус ассистента.</td></tr>
+            <tr><td class="command"><code>/capability_center</code></td><td>Главный обзор: agenda, status, approvals, memory, sources.</td></tr>
+            <tr><td class="command"><code>/new</code></td><td>Начать новую логическую сессию.</td></tr>
+            <tr><td class="command"><code>/compact</code></td><td>Сжать текущую переписку в сводку.</td></tr>
+            <tr><td class="command"><code>/assistants</code></td><td>Показать безопасных помощников.</td></tr>
+            <tr><td class="command"><code>/assistant_pick &lt;secretary|buyer|market_analyst&gt;</code></td><td>Выбрать помощника.</td></tr>
+            <tr><td class="command"><code>/automations</code></td><td>Показать шаблоны автоматизаций.</td></tr>
+            <tr><td class="command"><code>/automation_enable &lt;template&gt;</code></td><td>Включить автоматизацию.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Память</h3>
+        <span>команды и обычный текст</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>обычный текст</code></td><td>Сохраняет мысль, факт, задачу, решение или ссылку в second brain.</td></tr>
+            <tr><td class="command"><code>/capture &lt;текст&gt;</code></td><td>Быстро сохранить мысль, задачу или факт.</td></tr>
+            <tr><td class="command"><code>/remember &lt;заметка&gt;</code></td><td>Сохранить заметку в память.</td></tr>
+            <tr><td class="command"><code>/memory &lt;запрос&gt;</code></td><td>Найти заметку в памяти.</td></tr>
+            <tr><td class="command"><code>/ask &lt;вопрос&gt;</code></td><td>Ответить на вопрос по памяти.</td></tr>
+            <tr><td class="command"><code>/context &lt;тема&gt;</code></td><td>Найти связанный контекст по теме.</td></tr>
+            <tr><td class="command"><code>/today</code></td><td>Показать сегодняшнюю ленту памяти.</td></tr>
+            <tr><td class="command"><code>/recent</code></td><td>Показать последние заметки.</td></tr>
+            <tr><td class="command"><code>/agenda</code></td><td>Показать задачи, напоминания, jobs и важное.</td></tr>
+            <tr><td class="command"><code>/tasks</code></td><td>Показать открытые задачи из памяти.</td></tr>
+            <tr><td class="command"><code>/task &lt;текст&gt;</code></td><td>Создать задачу в памяти.</td></tr>
+            <tr><td class="command"><code>/today_tasks</code></td><td>Показать задачи на сегодня.</td></tr>
+            <tr><td class="command"><code>/task_search &lt;query&gt;</code></td><td>Найти задачи.</td></tr>
+            <tr><td class="command"><code>/task_tag &lt;task_id&gt; &lt;tag&gt;</code></td><td>Добавить тег задаче.</td></tr>
+            <tr><td class="command"><code>/task_due &lt;task_id&gt; &lt;when&gt; &lt;text&gt;</code></td><td>Добавить due reminder к задаче.</td></tr>
+            <tr><td class="command"><code>/later &lt;task_id&gt; &lt;when&gt; &lt;text&gt;</code></td><td>Отложить задачу через reminder.</td></tr>
+            <tr><td class="command"><code>/done &lt;ID или номер&gt;</code></td><td>Закрыть задачу из памяти.</td></tr>
+            <tr><td class="command"><code>/remind &lt;когда&gt; &lt;текст&gt;</code></td><td>Создать напоминание.</td></tr>
+            <tr><td class="command"><code>/reminders</code></td><td>Показать активные напоминания.</td></tr>
+            <tr><td class="command"><code>/journal &lt;текст&gt;</code></td><td>Сохранить запись личного журнала.</td></tr>
+            <tr><td class="command"><code>/digest [дней]</code></td><td>Показать дайджест памяти за период.</td></tr>
+            <tr><td class="command"><code>/pin &lt;текст&gt;</code></td><td>Закрепить важную заметку.</td></tr>
+            <tr><td class="command"><code>/pins</code></td><td>Показать важные заметки.</td></tr>
+            <tr><td class="command"><code>/preference &lt;текст&gt;</code></td><td>Сохранить устойчивое предпочтение.</td></tr>
+            <tr><td class="command"><code>/lifestyle_context</code></td><td>Показать связанный контекст и решения.</td></tr>
+            <tr><td class="command"><code>/decide &lt;вопрос; варианты&gt;</code></td><td>Создать черновик решения.</td></tr>
+            <tr><td class="command"><code>/decisions</code></td><td>Показать журнал решений.</td></tr>
+            <tr><td class="command"><code>/person &lt;имя&gt;[: заметка]</code></td><td>Вести заметки о человеке.</td></tr>
+            <tr><td class="command"><code>/people</code></td><td>Показать people objects.</td></tr>
+            <tr><td class="command"><code>/followup &lt;person&gt; &lt;when&gt; &lt;text&gt;</code></td><td>Напомнить написать человеку.</td></tr>
+            <tr><td class="command"><code>/draft_email &lt;person&gt; &lt;topic&gt;</code></td><td>Создать локальный draft письма.</td></tr>
+            <tr><td class="command"><code>/objects [type]</code></td><td>Показать local-first objects.</td></tr>
+            <tr><td class="command"><code>/collections</code></td><td>Показать коллекции по тегам и типам.</td></tr>
+            <tr><td class="command"><code>/collection &lt;название&gt;</code></td><td>Показать заметки одной коллекции.</td></tr>
+            <tr><td class="command"><code>/spaces</code></td><td>Показать пространства памяти.</td></tr>
+            <tr><td class="command"><code>/space &lt;name&gt;</code></td><td>Выбрать активное пространство памяти.</td></tr>
+            <tr><td class="command"><code>/sources</code></td><td>Показать источники памяти.</td></tr>
+            <tr><td class="command"><code>/source_add &lt;rss|github|url&gt; &lt;target&gt;</code></td><td>Добавить unified source.</td></tr>
+            <tr><td class="command"><code>/source_list</code></td><td>Показать unified sources.</td></tr>
+            <tr><td class="command"><code>/source_sync [source_id]</code></td><td>Синхронизировать unified sources.</td></tr>
+            <tr><td class="command"><code>/source_delete &lt;source_id&gt;</code></td><td>Удалить unified source.</td></tr>
+            <tr><td class="command"><code>/source_trust</code></td><td>Показать доверие к источникам.</td></tr>
+            <tr><td class="command"><code>/learn_url &lt;ссылка&gt;</code></td><td>Сохранить страницу в память.</td></tr>
+            <tr><td class="command"><code>/rss_add &lt;ссылка&gt;</code></td><td>Добавить RSS/Atom-подписку.</td></tr>
+            <tr><td class="command"><code>/rss_digest</code></td><td>Прочитать RSS/Atom-подписки.</td></tr>
+            <tr><td class="command"><code>/memory_tree</code></td><td>Показать состояние Memory Tree.</td></tr>
+            <tr><td class="command"><code>/memory_rebuild_tree</code></td><td>Пересобрать daily, project и profile summaries.</td></tr>
+            <tr><td class="command"><code>/memory_sync</code></td><td>Синхронизировать Markdown, objects и search indexes.</td></tr>
+            <tr><td class="command"><code>/memory_profile</code></td><td>Показать long-term profile памяти.</td></tr>
+            <tr><td class="command"><code>/project_summary &lt;project&gt;</code></td><td>Собрать summary по проекту.</td></tr>
+            <tr><td class="command"><code>/weekly_summary</code></td><td>Собрать weekly summary памяти.</td></tr>
+            <tr><td class="command"><code>/inbox_review</code></td><td>Показать заметки для разбора.</td></tr>
+            <tr><td class="command"><code>/session_summary</code></td><td>Сохранить сводку текущей переписки.</td></tr>
+            <tr><td class="command"><code>/compact</code></td><td>Сохранить сводку текущей переписки как сжатие контекста.</td></tr>
+            <tr><td class="command"><code>/mode &lt;secretary|researcher|editor|analyst&gt;</code></td><td>Выбрать режим ассистента.</td></tr>
+            <tr><td class="command"><code>/trace on|off</code></td><td>Включить или выключить trace-режим.</td></tr>
+            <tr><td class="command"><code>/verbose on|off</code></td><td>Включить или выключить подробные ответы.</td></tr>
+            <tr><td class="command"><code>/session_reset</code></td><td>Начать новую логическую сессию.</td></tr>
+            <tr><td class="command"><code>/usage</code></td><td>Показать счётчики памяти и ассистента.</td></tr>
+            <tr><td class="command"><code>/skills</code></td><td>Показать skills ассистента.</td></tr>
+            <tr><td class="command"><code>/skill &lt;name&gt;</code></td><td>Выбрать активный skill.</td></tr>
+            <tr><td class="command"><code>/skill_add &lt;name&gt; &lt;instructions&gt;</code></td><td>Создать skill в vault.</td></tr>
+            <tr><td class="command"><code>/job_add &lt;daily|every|once&gt; &lt;when&gt; [message|digest|rss|doctor|silent|markets|morning|price_alerts] &lt;text&gt;</code></td><td>Создать периодическую задачу.</td></tr>
+            <tr><td class="command"><code>/jobs</code></td><td>Показать периодические задачи.</td></tr>
+            <tr><td class="command"><code>/job_runs</code></td><td>Показать историю запусков jobs.</td></tr>
+            <tr><td class="command"><code>/job_delete &lt;job_id&gt;</code></td><td>Удалить job.</td></tr>
+            <tr><td class="command"><code>/orders</code></td><td>Показать standing orders.</td></tr>
+            <tr><td class="command"><code>/order_add &lt;text&gt;</code></td><td>Добавить standing order.</td></tr>
+            <tr><td class="command"><code>/order_delete &lt;id&gt;</code></td><td>Удалить standing order.</td></tr>
+            <tr><td class="command"><code>/tools</code></td><td>Показать локальные tools.</td></tr>
+            <tr><td class="command"><code>/tool &lt;name&gt; &lt;input&gt;</code></td><td>Запустить локальный tool.</td></tr>
+            <tr><td class="command"><code>/assistant_capabilities</code></td><td>Показать backend-возможности ассистента.</td></tr>
+            <tr><td class="command"><code>/delete_memory &lt;note_id&gt;</code></td><td>Запросить удаление заметки.</td></tr>
+            <tr><td class="command"><code>/approve &lt;code&gt;</code></td><td>Подтвердить ожидающее действие.</td></tr>
+            <tr><td class="command"><code>/export_memory</code></td><td>Экспортировать память пользователя.</td></tr>
+            <tr><td class="command"><code>/import_memory [--apply] &lt;zip_path&gt;</code></td><td>Импортировать память из zip.</td></tr>
+            <tr><td class="command"><code>/voice_note &lt;текст&gt;</code></td><td>Сохранить расшифровку голосовой заметки.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Дом</h3>
+        <span>склад и докупка</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/pantry</code></td><td>Показать домашний склад.</td></tr>
+            <tr><td class="command"><code>/pantry_add &lt;товар&gt; [кол-во] [ед] [дата]</code></td><td>Добавить продукт на склад.</td></tr>
+            <tr><td class="command"><code>/pantry_use &lt;id|name&gt; [кол-во]</code></td><td>Списать продукт со склада.</td></tr>
+            <tr><td class="command"><code>/pantry_plan</code></td><td>Показать, что скоро истекает и что докупить.</td></tr>
+            <tr><td class="command"><code>/pantry_deals</code></td><td>Показать, что докупить по выгодным текущим ценам.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Бюджет</h3>
+        <span>деньги и чеки</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/receipt &lt;товар цена...&gt;</code></td><td>Сохранить текстовый чек.</td></tr>
+            <tr><td class="command"><code>/budget [YYYY-MM]</code></td><td>Показать бюджет месяца.</td></tr>
+            <tr><td class="command"><code>/budget_set &lt;YYYY-MM&gt; &lt;сумма&gt;</code></td><td>Задать месячный бюджет.</td></tr>
+            <tr><td class="command"><code>/budget_plan [YYYY-MM]</code></td><td>Сравнить последнюю корзину с чеками месяца.</td></tr>
+            <tr><td class="command"><code>/expense &lt;amount&gt; &lt;category&gt; [note]</code></td><td>Добавить расход.</td></tr>
+            <tr><td class="command"><code>/income &lt;amount&gt; &lt;source&gt; [note]</code></td><td>Добавить доход.</td></tr>
+            <tr><td class="command"><code>/accounts [name amount]</code></td><td>Показать или обновить счета.</td></tr>
+            <tr><td class="command"><code>/subscriptions [name amount]</code></td><td>Показать или обновить подписки.</td></tr>
+            <tr><td class="command"><code>/cashflow [YYYY-MM]</code></td><td>Показать прогноз денег по месяцу.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Семья</h3>
+        <span>общий список</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/family</code></td><td>Показать семейное пространство.</td></tr>
+            <tr><td class="command"><code>/family_create &lt;name&gt;</code></td><td>Создать семейное пространство.</td></tr>
+            <tr><td class="command"><code>/family_join &lt;invite_code&gt;</code></td><td>Войти в семейное пространство.</td></tr>
+            <tr><td class="command"><code>/family_add &lt;текст&gt;</code></td><td>Добавить пункт в общий список.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Рынки</h3>
+        <span>market watch</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/markets</code></td><td>BTC, BTC.D и главные мировые индексы.</td></tr>
+            <tr><td class="command"><code>/market_brief</code></td><td>Sentiment, risk regime и signal evolution.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="category-title">
+        <h3>Покупки</h3>
+        <span>корзины и сигналы</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/settings</code></td><td>Настройки вторичных shopping-skills.</td></tr>
+            <tr><td class="command"><code>/prices &lt;список товаров&gt;</code></td><td>Сравнить список покупок.</td></tr>
+            <tr><td class="command"><code>/last</code></td><td>Повторить последнюю корзину shopping-skill.</td></tr>
+            <tr><td class="command"><code>/watch_price &lt;товар&gt; &lt;цена&gt;</code></td><td>Следить за ценой товара.</td></tr>
+            <tr><td class="command"><code>/price_alerts</code></td><td>Показать ценовые сигналы.</td></tr>
+            <tr><td class="command"><code>/price_unwatch &lt;alert_id&gt;</code></td><td>Удалить ценовой сигнал.</td></tr>
+            <tr><td class="command"><code>/check_alerts</code></td><td>Проверить ценовые сигналы сейчас.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="admin">
+      <h2>Админ-команды</h2>
+      <div class="note admin">
+        <p>
+          Эти команды выполняются только для Telegram ID из <code>ADMIN_TELEGRAM_IDS</code>.
+          Они нужны для диагностики, доступа, аудита, backup и обслуживания scraping/цен.
+        </p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Команда</th><th>Что делает</th></tr></thead>
+          <tbody>
+            <tr><td class="command"><code>/admin_status</code></td><td>Состояние цен, магазинов и скрапинга.</td></tr>
+            <tr><td class="command"><code>/admin_diag</code></td><td>Диагностика бота и окружения.</td></tr>
+            <tr><td class="command"><code>/admin_doctor</code></td><td>Полная диагностика ассистента.</td></tr>
+            <tr><td class="command"><code>/admin_secret_scan</code></td><td>Локальный поиск возможных секретов.</td></tr>
+            <tr><td class="command"><code>/admin_audit</code></td><td>Показать audit log.</td></tr>
+            <tr><td class="command"><code>/admin_onboarding</code></td><td>Показать шаги настройки ассистента.</td></tr>
+            <tr><td class="command"><code>/pairing_approve &lt;code&gt;</code></td><td>Подтвердить pairing-код пользователя.</td></tr>
+            <tr><td class="command"><code>/access_list</code></td><td>Показать allowlist пользователей.</td></tr>
+            <tr><td class="command"><code>/admin_backup</code></td><td>Создать архив памяти и безопасных файлов проекта.</td></tr>
+            <tr><td class="command"><code>/admin_logs</code></td><td>Показать последние ошибки скрапинга.</td></tr>
+            <tr><td class="command"><code>/admin_deploy_check</code></td><td>Проверка self-hosting настроек.</td></tr>
+            <tr><td class="command"><code>/admin_refresh_prices</code></td><td>Обновить цены по всем магазинам.</td></tr>
+            <tr><td class="command"><code>/admin_scraper_diag &lt;store_slug&gt; [query]</code></td><td>Диагностика scraper-а без сохранения цен.</td></tr>
+            <tr><td class="command"><code>/admin_scrape_store &lt;store_slug&gt;</code></td><td>Обновить цены одного магазина.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      Документ создан для текущего проекта в <code>E:\assistantbot</code>. При изменении команд обновите этот файл и <a href="./bot_usage_guide.html">инструкцию пользования</a>.
+    </footer>
+  </main>
+</body>
+</html>
