@@ -18,6 +18,7 @@ async def configure_bot_menu(bot: Bot, settings: Settings | None = None) -> None
     await bot.set_my_commands(public_bot_commands())
 
     manifest = mini_app_manifest(runtime_settings.tg_mini_app_url)
+    menu_button: MenuButtonWebApp | MenuButtonCommands
     if manifest.enabled and is_feature_enabled("miniapp", runtime_settings):
         menu_button = MenuButtonWebApp(
             text="Mini App",

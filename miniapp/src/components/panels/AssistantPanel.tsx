@@ -64,7 +64,7 @@ export function AssistantPanel({ onAsk, compact = false }: AssistantPanelProps) 
               }
             }}
           />
-          <div className="grid grid-cols-[1fr_118px] gap-2 max-[440px]:grid-cols-1">
+          <div className="grid grid-cols-[1fr_122px] gap-2 max-[440px]:grid-cols-1">
             <div className="flex flex-wrap gap-2">
               {promptPresets.map((item) => (
                 <button

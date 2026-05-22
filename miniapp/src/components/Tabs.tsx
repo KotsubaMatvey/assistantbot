@@ -1,4 +1,4 @@
-import { tabs } from "../domain/data";
+﻿import { tabs } from "../domain/data";
 import { eventBus, type TabId } from "../domain/events";
 
 type TabsProps = {

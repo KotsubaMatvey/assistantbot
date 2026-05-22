@@ -293,17 +293,23 @@ def _source_to_dict(source: SourceRecord) -> dict[str, object]:
 
 
 def _source_from_dict(raw: dict[str, object]) -> SourceRecord:
+    sync_interval = raw.get("sync_interval_minutes", 60)
+    if not isinstance(sync_interval, int | str | bytes | bytearray):
+        sync_interval = 60
+    items_seen = raw.get("items_seen", [])
+    if not isinstance(items_seen, list):
+        items_seen = []
     return SourceRecord(
         id=str(raw.get("id", "")),
         type=str(raw.get("type", "")),
         url=str(raw.get("url", "")),
-        sync_interval_minutes=int(raw.get("sync_interval_minutes", 60)),
+        sync_interval_minutes=int(sync_interval),
         trust_level=str(raw.get("trust_level", "normal")),
         enabled=bool(raw.get("enabled", True)),
         last_sync_at=_parse_datetime(str(raw.get("last_sync_at", ""))),
         last_error=str(raw.get("last_error", "")),
         cursor=str(raw.get("cursor", "")),
-        items_seen=[str(item) for item in raw.get("items_seen", []) or []],
+        items_seen=[str(item) for item in items_seen],
     )
 
 

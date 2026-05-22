@@ -23,17 +23,17 @@ def enabled_feature_names(settings: Settings | None = None) -> tuple[str, ...]:
     known = set(FEATURE_NAMES)
     unknown = (requested | disabled) - known - {"all", "*"}
     if unknown:
-        names = ", ".join(sorted(unknown))
-        raise ValueError(f"Unknown bot feature flag: {names}")
+        unknown_names = ", ".join(sorted(unknown))
+        raise ValueError(f"Unknown bot feature flag: {unknown_names}")
 
     enabled_all = not requested or "all" in requested or "*" in requested
-    names: list[str] = []
+    enabled_names: list[str] = []
     for feature_name in FEATURE_NAMES:
         if feature_name in disabled:
             continue
         if enabled_all or feature_name in requested:
-            names.append(feature_name)
-    return tuple(names)
+            enabled_names.append(feature_name)
+    return tuple(enabled_names)
 
 
 def is_feature_enabled(feature_name: str, settings: Settings | None = None) -> bool:

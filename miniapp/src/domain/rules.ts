@@ -1,4 +1,4 @@
-import type { AssistantState } from "./assistant";
+﻿import type { AssistantState } from "./assistant";
 import type { AppEvents, EventBus, TabId } from "./events";
 import type { BotCommand, TelegramPayload } from "../types/telegram";
 

@@ -93,7 +93,7 @@ export function App() {
         setAssistantState("happy");
         setToast("Отправлено в бот");
         void recordMiniAppEvent("assistant_query_telegram_fallback", { chars: cleanText.length });
-        return "Отправил запрос в бота. Ответ появится в Telegram.";
+        return "Отправил запрос в бот. Ответ появится в Telegram.";
       }
       setAssistantState("sad");
       setStateError(formatMiniAppError(error));
@@ -218,8 +218,8 @@ export function App() {
   return (
     <main ref={screenRef} className="app-screen grid gap-4">
       <header className="app-topbar">
-        <div>
-          <p className="app-kicker">Бот-ассистент</p>
+        <div className="min-w-0">
+          <p className="app-kicker">Личный бот</p>
           <h1 className="app-title">Ассистент</h1>
         </div>
         <div className="app-actions">
@@ -291,7 +291,7 @@ export function App() {
         aria-hidden={!assistantOpen}
       >
         <div className="assistant-drawer-header">
-          <div>
+          <div className="min-w-0">
             <span className="app-kicker">Облачная LLM</span>
             <strong>Ассистент</strong>
           </div>
@@ -324,15 +324,7 @@ export function App() {
         </span>
       </button>
 
-      <div
-        className={
-          toast
-            ? "fixed right-4 top-4 z-50 max-w-[calc(100vw-32px)] translate-y-0 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-100 shadow-2xl transition"
-            : "pointer-events-none fixed right-4 top-4 z-50 max-w-[calc(100vw-32px)] translate-y-3 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-zinc-950 opacity-0 shadow-2xl transition"
-        }
-        role="status"
-        aria-live="polite"
-      >
+      <div className={toast ? "app-toast app-toast-visible" : "app-toast"} role="status" aria-live="polite">
         {toast}
       </div>
     </main>
@@ -355,7 +347,7 @@ function homeShortcutTitle(status: HomeScreenStatus | ""): string {
 
 function assistantDockCopy(state: AssistantState): string {
   if (state === "thinking") {
-    return "думает над контекстом";
+    return "собирает контекст";
   }
   if (state === "working") {
     return "выполняет действие";

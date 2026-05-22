@@ -147,7 +147,7 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                     </strong>
                     <span className="muted-text mt-1 block text-xs">
                       {source.enabled ? "включен" : "выключен"}
-                      {source.last_error ? ` · ${source.last_error}` : ""}
+                      {source.last_error ? ` - ${source.last_error}` : ""}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -181,7 +181,7 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
       </section>
 
       <form
-        className="glass-panel glass-panel-tight grid grid-cols-[110px_1fr_96px] gap-2 p-3 max-[620px]:grid-cols-1"
+        className="glass-panel glass-panel-tight grid grid-cols-[110px_1fr_104px] gap-2 p-3 max-[620px]:grid-cols-1"
         onSubmit={submitSource}
       >
         <select
@@ -249,12 +249,12 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
 
 function brainFilterLabel(filter: BrainFilter): string {
   if (filter === "objects") {
-    return "объекты";
+    return "Объекты";
   }
   if (filter === "sources") {
-    return "источники";
+    return "Источники";
   }
-  return "события";
+  return "События";
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {

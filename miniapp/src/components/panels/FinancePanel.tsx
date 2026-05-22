@@ -84,7 +84,7 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
           </div>
         </div>
         <div className="grid place-items-center">
-          <div className="relative size-44 rounded-full" style={chartStyle}>
+          <div className="budget-ring relative size-44 rounded-full" style={chartStyle}>
             <div className="absolute inset-10 grid place-items-center rounded-full bg-[var(--bg)] text-center">
               <span className="app-kicker">Остаток</span>
               <strong className="text-lg font-black text-white">
@@ -219,7 +219,7 @@ function MoneyForm({
 }) {
   return (
     <form
-      className="grid grid-cols-[118px_1fr_1fr_1.4fr_46px] gap-2 max-[720px]:grid-cols-1"
+      className="grid grid-cols-[112px_1fr_1fr_1.35fr_44px] gap-2 max-[720px]:grid-cols-1"
       onSubmit={onSubmit}
     >
       <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
@@ -270,7 +270,7 @@ function PairForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="grid grid-cols-[118px_1fr_1fr_46px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
+    <form className="grid grid-cols-[112px_1fr_1fr_44px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
       <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         {icon}
         {title}

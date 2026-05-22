@@ -1,6 +1,5 @@
 import {
   Bell,
-  CalendarDays,
   ListChecks,
   NotebookPen,
   Plus,
@@ -8,7 +7,7 @@ import {
   Users,
 } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActionButton } from "../ActionButton";
 import { todayActions } from "../../domain/data";
 import type { MiniAppState } from "../../domain/api";
@@ -27,8 +26,10 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
   const [noteText, setNoteText] = useState("");
   const [reminderText, setReminderText] = useState("");
   const [person, setPerson] = useState({ name: "", note: "" });
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const activeDay = today.getDate();
+  const monthLabel = today.toLocaleDateString("ru-RU", { month: "long" });
+  const calendarDays = useMemo(() => getCalendarDays(today), [today]);
 
   async function submitTask(event: FormEvent) {
     event.preventDefault();
@@ -92,29 +93,22 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
         <section className="glass-panel glass-panel-tight p-4">
           <div className="section-title">
             <span>Повестка</span>
-            <CalendarDays size={20} className="text-[var(--accent)]" />
+            <span className="text-sm text-[var(--accent)]">{monthLabel}</span>
           </div>
-          <div className="mt-4 grid grid-cols-7 gap-2 text-center text-sm font-black">
+          <div className="calendar-grid mt-4">
             {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
-              <span key={day} className="dim-text">
+              <span key={day} className="calendar-weekday">
                 {day}
               </span>
             ))}
-            {Array.from({ length: 35 }, (_, index) => {
-              const day = index + 1;
-              return (
-                <span
-                  key={day}
-                  className={
-                    day === activeDay
-                      ? "rounded-xl bg-[var(--accent)] py-2 text-zinc-950 shadow-[0_0_18px_rgba(0,196,180,0.42)]"
-                      : "py-2 text-zinc-100"
-                  }
-                >
-                  {day <= 31 ? day : ""}
-                </span>
-              );
-            })}
+            {calendarDays.map((day, index) => (
+              <span
+                key={`${day || "empty"}-${index}`}
+                className={day === activeDay ? "calendar-day calendar-day-active" : "calendar-day"}
+              >
+                {day || ""}
+              </span>
+            ))}
           </div>
           <p className="muted-text mt-4 text-sm leading-5">{state?.agenda || state?.digest}</p>
         </section>
@@ -213,7 +207,7 @@ function PersonForm({
 }) {
   return (
     <form
-      className="grid grid-cols-[94px_1fr_1.4fr_46px] gap-2 max-[620px]:grid-cols-1"
+      className="grid grid-cols-[104px_1fr_1.4fr_44px] gap-2 max-[620px]:grid-cols-1"
       onSubmit={onSubmit}
     >
       <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
@@ -262,7 +256,7 @@ function QuickForm({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <form className="grid grid-cols-[94px_1fr_46px] gap-2 max-[520px]:grid-cols-1" onSubmit={onSubmit}>
+    <form className="grid grid-cols-[104px_1fr_44px] gap-2 max-[520px]:grid-cols-1" onSubmit={onSubmit}>
       <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
         {icon}
         {label}
@@ -300,4 +294,17 @@ function StatusStrip({
       </button>
     </div>
   );
+}
+
+function getCalendarDays(date: Date): (number | null)[] {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
+  const days = [
+    ...Array.from({ length: firstDay }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+  const tail = (7 - (days.length % 7)) % 7;
+  return [...days, ...Array.from({ length: tail }, () => null)];
 }
