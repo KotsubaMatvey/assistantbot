@@ -32,17 +32,25 @@ export function App() {
   const [stateError, setStateError] = useState("");
   const [homeStatus, setHomeStatus] = useState<HomeScreenStatus | "">("");
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantPulse, setAssistantPulse] = useState(0);
   const screenRef = useRef<HTMLElement | null>(null);
   const telegram = useMemo<TelegramWebApp | undefined>(() => window.Telegram?.WebApp, []);
+
+  const nudgeAssistant = useCallback(() => {
+    setAssistantPulse((pulse) => (pulse + 1) % 1000);
+  }, []);
 
   const refreshState = useCallback(async () => {
     setStateLoading(true);
     setStateError("");
+    setAssistantState("thinking");
     try {
       setMiniState(await loadMiniAppState());
+      setAssistantState("happy");
       void recordMiniAppEvent("state_refresh", { result: "ok" });
     } catch (error) {
       setStateError(formatMiniAppError(error));
+      setAssistantState("sad");
       void recordMiniAppEvent("state_refresh", { result: "error" });
     } finally {
       setStateLoading(false);
@@ -216,7 +224,12 @@ export function App() {
   }, []);
 
   return (
-    <main ref={screenRef} className="app-screen grid gap-4">
+    <main
+      ref={screenRef}
+      className="app-screen grid gap-4"
+      onKeyDownCapture={nudgeAssistant}
+      onPointerDownCapture={nudgeAssistant}
+    >
       <header className="app-topbar">
         <div className="min-w-0">
           <p className="app-kicker">Личный бот</p>
@@ -244,7 +257,7 @@ export function App() {
         </div>
       </header>
 
-      <PixelAssistant state={assistantState} />
+      <PixelAssistant state={assistantState} pulse={assistantPulse} />
 
       {activeTab === "today" && (
         <TodayPanel
@@ -313,7 +326,10 @@ export function App() {
         className={assistantOpen ? "assistant-dock assistant-dock-hidden" : "assistant-dock"}
         type="button"
         aria-label="Открыть ассистента"
-        onClick={() => setAssistantOpen(true)}
+        onClick={() => {
+          setAssistantState("thinking");
+          setAssistantOpen(true);
+        }}
       >
         <span className="assistant-dock-icon">
           <Bot size={19} />

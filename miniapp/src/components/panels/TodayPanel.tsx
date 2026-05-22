@@ -139,7 +139,7 @@ export function TodayPanel({ state, loading, error, onMutate, onRefresh }: Today
               </article>
             ))}
             {!loading && agendaItems.length === 0 && (
-              <article className="record-row">
+              <article className="empty-state">
                 <strong className="block text-base text-white">Нет запланированных дел</strong>
                 <span className="muted-text mt-1 block text-sm">Добавь задачу или напоминание.</span>
               </article>

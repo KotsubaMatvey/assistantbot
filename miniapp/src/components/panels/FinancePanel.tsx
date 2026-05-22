@@ -13,13 +13,53 @@ type FinancePanelProps = {
   onMutate: (path: string, body: Record<string, unknown>) => Promise<void>;
 };
 
+type BudgetSlice = {
+  name: string;
+  amount: string;
+  value: number;
+  percent: number;
+  color: string;
+};
+
+type LedgerRow = {
+  id: string;
+  left: string;
+  right: string;
+  detail?: string;
+};
+
 export function FinancePanel({ state, loading, error, onMutate }: FinancePanelProps) {
   const [expense, setExpense] = useState({ amount: "", category: "", note: "" });
   const [income, setIncome] = useState({ amount: "", category: "", note: "" });
   const [account, setAccount] = useState({ name: "", balance: "" });
   const [subscription, setSubscription] = useState({ name: "", amount: "" });
   const [receipt, setReceipt] = useState("");
-  const chartStyle = useMemo(() => budgetChartStyle(state?.budget.categories ?? []), [state]);
+  const budgetSlices = useMemo(() => getBudgetSlices(state?.budget.categories ?? []), [state]);
+  const chartStyle = useMemo(() => budgetChartStyle(budgetSlices), [budgetSlices]);
+  const budgetProgress = getBudgetProgress(state?.budget.spent, state?.budget.limit);
+  const ledgerRows = useMemo<LedgerRow[]>(
+    () => [
+      ...(state?.accounts ?? []).map((item) => ({
+        id: `account-${item.id}`,
+        left: item.name,
+        right: `${item.balance} ${item.currency}`,
+        detail: "Счет",
+      })),
+      ...(state?.subscriptions ?? []).map((item) => ({
+        id: `subscription-${item.id}`,
+        left: item.name,
+        right: `${item.amount} / ${item.cycle}`,
+        detail: "Подписка",
+      })),
+      ...(state?.transactions ?? []).slice(0, 6).map((item) => ({
+        id: `transaction-${item.id}`,
+        left: `${translateTransactionKind(item.kind)}: ${item.category}`,
+        right: item.amount,
+        detail: item.note,
+      })),
+    ],
+    [state],
+  );
 
   async function submitTransaction(kind: "expense" | "income", event: FormEvent) {
     event.preventDefault();
@@ -82,8 +122,17 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
             <MetricCard label="Доходы" value={state?.income ?? "0.00"} />
             <MetricCard label="Прогноз" value={state?.forecast ?? "0.00"} />
           </div>
+          <div className="budget-progress mt-3">
+            <div className="flex items-center justify-between gap-3">
+              <span>План/факт</span>
+              <strong>{Math.round(budgetProgress)}%</strong>
+            </div>
+            <div className="budget-track" aria-hidden="true">
+              <span style={{ width: `${budgetProgress}%` }} />
+            </div>
+          </div>
         </div>
-        <div className="grid place-items-center">
+        <div className="budget-chart-card grid place-items-center gap-3">
           <div className="budget-ring relative size-44 rounded-full" style={chartStyle}>
             <div className="absolute inset-10 grid place-items-center rounded-full bg-[var(--bg)] text-center">
               <span className="app-kicker">Остаток</span>
@@ -92,6 +141,44 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
               </strong>
             </div>
           </div>
+          <div className="budget-legend">
+            {budgetSlices.slice(0, 4).map((slice) => (
+              <span key={slice.name}>
+                <i style={{ background: slice.color }} />
+                {slice.name}
+              </span>
+            ))}
+            {budgetSlices.length === 0 && <span>Категории появятся после первого расхода</span>}
+          </div>
+        </div>
+      </section>
+
+      <section className="glass-panel glass-panel-tight grid gap-3 p-4">
+        <div className="section-title">
+          <span>Категории</span>
+          <span className="text-sm text-[var(--accent)]">{budgetSlices.length || "нет данных"}</span>
+        </div>
+        <div className="budget-bar-list">
+          {budgetSlices.map((slice) => (
+            <article className="budget-bar-row" key={slice.name}>
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  <i style={{ background: slice.color }} />
+                  {slice.name}
+                </span>
+                <strong>{slice.amount}</strong>
+              </div>
+              <div className="budget-bar" aria-label={`${slice.name}: ${Math.round(slice.percent)}%`}>
+                <span style={{ background: slice.color, width: `${slice.percent}%` }} />
+              </div>
+            </article>
+          ))}
+          {!loading && budgetSlices.length === 0 && (
+            <article className="empty-state">
+              <strong>Нет расходов по категориям</strong>
+              <span>Добавь расход или чек, и здесь появится разбивка бюджета.</span>
+            </article>
+          )}
         </div>
       </section>
 
@@ -155,20 +242,15 @@ export function FinancePanel({ state, loading, error, onMutate }: FinancePanelPr
       </section>
 
       <div className="grid gap-2">
-        {(state?.accounts ?? []).map((item) => (
-          <DataRow key={item.id} left={item.name} right={`${item.balance} ${item.currency}`} />
+        {ledgerRows.map((item) => (
+          <DataRow key={item.id} left={item.left} right={item.right} detail={item.detail} />
         ))}
-        {(state?.subscriptions ?? []).map((item) => (
-          <DataRow key={item.id} left={item.name} right={`${item.amount} / ${item.cycle}`} />
-        ))}
-        {(state?.transactions ?? []).slice(0, 6).map((item) => (
-          <DataRow
-            key={item.id}
-            left={`${translateTransactionKind(item.kind)}: ${item.category}`}
-            right={item.amount}
-            detail={item.note}
-          />
-        ))}
+        {!loading && ledgerRows.length === 0 && (
+          <article className="empty-state">
+            <strong>Финансовая лента пуста</strong>
+            <span>Добавь счет, подписку, расход или чек.</span>
+          </article>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 max-[620px]:grid-cols-2">
@@ -319,21 +401,52 @@ function translateTransactionKind(kind: string): string {
   return kind;
 }
 
-function budgetChartStyle(categories: { amount: string }[]): CSSProperties {
-  const amounts = categories.map((category) => Number.parseFloat(category.amount) || 0);
-  const total = amounts.reduce((sum, value) => sum + value, 0);
+const budgetColors = ["var(--accent)", "var(--accent-2)", "var(--accent-3)", "var(--accent-4)", "#d3d3d3"];
+
+function getBudgetSlices(categories: { name: string; amount: string }[]): BudgetSlice[] {
+  const items = categories
+    .map((category, index) => ({
+      name: category.name,
+      amount: category.amount,
+      value: parseMoney(category.amount),
+      color: budgetColors[index % budgetColors.length],
+    }))
+    .filter((category) => category.value > 0);
+  const total = items.reduce((sum, category) => sum + category.value, 0);
   if (total <= 0) {
+    return [];
+  }
+  return items.map((category) => ({
+    ...category,
+    percent: Math.max(4, (category.value / total) * 100),
+  }));
+}
+
+function budgetChartStyle(slices: BudgetSlice[]): CSSProperties {
+  if (slices.length === 0) {
     return {
-      background:
-        "conic-gradient(var(--accent) 0 65%, var(--accent-2) 65% 82%, #8f6cf0 82% 100%)",
+      background: "conic-gradient(rgba(255,255,255,0.16) 0 100%)",
     };
   }
   let cursor = 0;
-  const colors = ["var(--accent)", "var(--accent-2)", "#8f6cf0", "#d3d3d3"];
-  const stops = amounts.map((amount, index) => {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const stops = slices.map((slice) => {
     const start = cursor;
-    cursor += (amount / total) * 100;
-    return `${colors[index % colors.length]} ${start.toFixed(1)}% ${cursor.toFixed(1)}%`;
+    cursor += (slice.value / total) * 100;
+    return `${slice.color} ${start.toFixed(1)}% ${cursor.toFixed(1)}%`;
   });
   return { background: `conic-gradient(${stops.join(", ")})` };
+}
+
+function getBudgetProgress(spent?: string, limit?: string): number {
+  const spentValue = parseMoney(spent ?? "");
+  const limitValue = parseMoney(limit ?? "");
+  if (limitValue <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, (spentValue / limitValue) * 100));
+}
+
+function parseMoney(value: string): number {
+  return Number.parseFloat(value.replace(",", ".")) || 0;
 }

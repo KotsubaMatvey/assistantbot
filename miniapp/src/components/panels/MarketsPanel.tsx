@@ -63,6 +63,12 @@ export function MarketsPanel() {
             )}
           </article>
         ))}
+        {!loading && !error && (markets?.quotes ?? []).length === 0 && (
+          <article className="empty-state col-span-2">
+            <strong>Котировки пока не загружены</strong>
+            <span>Нажми обновить, чтобы подтянуть рыночные данные.</span>
+          </article>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 max-[520px]:grid-cols-1">

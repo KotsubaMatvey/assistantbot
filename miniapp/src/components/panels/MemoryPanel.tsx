@@ -135,6 +135,12 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                 </div>
               </article>
             ))}
+          {filter === "objects" && !loading && filteredObjects.length === 0 && (
+            <article className="empty-state">
+              <strong>Объекты не найдены</strong>
+              <span>Попробуй другой запрос или добавь новую заметку в память.</span>
+            </article>
+          )}
 
           {filter === "sources" &&
             filteredSources.map((source) => (
@@ -166,6 +172,12 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                 </div>
               </article>
             ))}
+          {filter === "sources" && !loading && filteredSources.length === 0 && (
+            <article className="empty-state">
+              <strong>Источников пока нет</strong>
+              <span>Добавь RSS, GitHub или URL-источник ниже.</span>
+            </article>
+          )}
 
           {filter === "events" &&
             filteredEvents.slice(0, 10).map((event) => (
@@ -177,6 +189,12 @@ export function MemoryPanel({ state, loading, error, onMutate, onRefresh }: Memo
                 <span className="muted-text mt-1 block text-xs">{event.created_at}</span>
               </article>
             ))}
+          {filter === "events" && !loading && filteredEvents.length === 0 && (
+            <article className="empty-state">
+              <strong>Событий нет</strong>
+              <span>Мини-приложение покажет здесь новые действия и синхронизации.</span>
+            </article>
+          )}
         </div>
       </section>
 
