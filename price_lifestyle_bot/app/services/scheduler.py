@@ -1,44 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
 
 from app.config import get_settings
-from app.db.models import User
-from app.db.repositories.prices import get_latest_prices_by_store_products, get_price_history_stats
-from app.db.repositories.users import get_settings_for_user
-from app.db.session import SessionLocal
 from app.logging_config import get_logger
-from app.services.agenda import build_agenda
-from app.services.assistant_jobs import AssistantJob, AssistantJobStore
-from app.services.daily_brief import DailyBrief, format_daily_brief
-from app.services.knowledge_ingestion import (
-    fetch_feed_digests,
-    format_digest_memory_note,
-    format_feed_digests,
-    list_rss_subscriptions,
-)
-from app.services.market_watch import (
-    fetch_market_watch,
-    format_market_brief,
-    format_market_watch,
-    market_watch_memory_note,
-)
-from app.services.obsidian_memory import ObsidianMemory
-from app.services.pantry import PantryStore, format_pantry_suggestions
-from app.services.price_alerts import (
-    PriceAlertStore,
-    evaluate_price_alerts,
-    format_price_alert_hits,
-)
-from app.services.price_comparator import offer_from_snapshot_with_history
-from app.services.spending import SpendingStore, format_budget_summary
 
 if TYPE_CHECKING:
     from aiogram import Bot
+
+    from app.services.assistant_jobs import AssistantJob
+    from app.services.obsidian_memory import ObsidianMemory
 
 logger = get_logger(__name__)
 
@@ -72,6 +47,19 @@ def create_scheduler(bot: Bot | None = None) -> AsyncIOScheduler:
             max_instances=1,
             replace_existing=True,
         )
+        if settings.admin_backup_enabled:
+            if settings.admin_telegram_ids:
+                scheduler.add_job(
+                    _send_admin_backup,
+                    "interval",
+                    hours=settings.admin_backup_interval_hours,
+                    args=[bot],
+                    id="send_admin_backup",
+                    max_instances=1,
+                    replace_existing=True,
+                )
+            else:
+                logger.warning("scheduled_backup_disabled_without_admin_ids")
     return scheduler
 
 
@@ -94,13 +82,29 @@ async def _refresh_all_prices() -> None:
 
 
 async def _send_due_reminders(bot: Bot) -> None:
+    from app.services.obsidian_memory import ObsidianMemory
+    from app.services.reminder_delivery import ReminderDeliveryStore
+
     settings = get_settings()
     memory = ObsidianMemory(settings.obsidian_vault_path)
+    deliveries = ReminderDeliveryStore(settings.obsidian_vault_path)
     for reminder in memory.due_reminders():
+        delivery = deliveries.get(user_id=reminder.user_id, reminder_id=reminder.id)
+        if delivery is not None and delivery.status == "sent":
+            memory.mark_reminder_sent(reminder.path)
+            continue
+        if not deliveries.claim(user_id=reminder.user_id, reminder_id=reminder.id):
+            continue
         try:
             await bot.send_message(reminder.user_id, f"Напоминание:\n{reminder.snippet}")
+            deliveries.mark_sent(user_id=reminder.user_id, reminder_id=reminder.id)
             memory.mark_reminder_sent(reminder.path)
         except Exception as exc:
+            deliveries.mark_failed(
+                user_id=reminder.user_id,
+                reminder_id=reminder.id,
+                error=str(exc),
+            )
             logger.exception(
                 "scheduled_reminder_failed",
                 error=str(exc),
@@ -110,6 +114,9 @@ async def _send_due_reminders(bot: Bot) -> None:
 
 
 async def _send_due_jobs(bot: Bot) -> None:
+    from app.services.assistant_jobs import AssistantJobStore
+    from app.services.obsidian_memory import ObsidianMemory
+
     settings = get_settings()
     jobs = AssistantJobStore(settings.obsidian_vault_path, timezone_name=settings.timezone)
     memory = ObsidianMemory(settings.obsidian_vault_path)
@@ -129,6 +136,46 @@ async def _send_due_jobs(bot: Bot) -> None:
             )
 
 
+async def _send_admin_backup(bot: Bot) -> None:
+    from aiogram.types import FSInputFile
+
+    from app.services.admin_tools import create_backup, create_postgres_dump, repo_root_from_cwd
+
+    settings = get_settings()
+    if not settings.admin_telegram_ids:
+        return
+    try:
+        database_dump = await asyncio.to_thread(create_postgres_dump, settings.database_url)
+        result = await asyncio.to_thread(
+            create_backup,
+            repo_root=repo_root_from_cwd(),
+            vault_path=settings.obsidian_vault_path,
+            database_dump=database_dump,
+        )
+    except Exception as exc:
+        logger.exception("scheduled_backup_failed", error=str(exc))
+        return
+    try:
+        for admin_id in settings.admin_telegram_ids:
+            try:
+                await bot.send_document(
+                    chat_id=admin_id,
+                    document=FSInputFile(result.path),
+                    caption=(
+                        "Automatic backup. Store this sensitive archive securely. "
+                        f"Files: {result.files_count}"
+                    ),
+                )
+            except Exception as exc:
+                logger.exception(
+                    "scheduled_backup_delivery_failed",
+                    error=str(exc),
+                    admin_id=admin_id,
+                )
+    finally:
+        await asyncio.to_thread(result.path.unlink, missing_ok=True)
+
+
 async def _job_output(job: AssistantJob, *, memory: ObsidianMemory) -> str:
     delivery_mode = job.delivery_mode
     user_id = job.user_id
@@ -144,6 +191,13 @@ async def _job_output(job: AssistantJob, *, memory: ObsidianMemory) -> str:
     if delivery_mode == "digest":
         return memory.period_digest(user_id=user_id, days=7)
     if delivery_mode == "rss":
+        from app.services.knowledge_ingestion import (
+            fetch_feed_digests,
+            format_digest_memory_note,
+            format_feed_digests,
+            list_rss_subscriptions,
+        )
+
         subscriptions = list_rss_subscriptions(get_settings().obsidian_vault_path, user_id=user_id)
         if not subscriptions:
             return "RSS-подписок пока нет."
@@ -153,6 +207,12 @@ async def _job_output(job: AssistantJob, *, memory: ObsidianMemory) -> str:
     if delivery_mode == "doctor":
         return f"Doctor job:\n{message}"
     if delivery_mode == "markets":
+        from app.services.market_watch import (
+            fetch_market_watch,
+            format_market_watch,
+            market_watch_memory_note,
+        )
+
         result = await fetch_market_watch()
         memory.remember_user_note(
             user_id=user_id,
@@ -174,6 +234,22 @@ def _job_run_detail(job: AssistantJob, output: str) -> str:
 
 
 async def _price_alert_output(*, user_id: int) -> str:
+    from sqlalchemy import select
+
+    from app.db.models import User
+    from app.db.repositories.prices import (
+        get_latest_prices_by_store_products,
+        get_price_history_stats,
+    )
+    from app.db.repositories.users import get_settings_for_user
+    from app.db.session import SessionLocal
+    from app.services.price_alerts import (
+        PriceAlertStore,
+        evaluate_price_alerts,
+        format_price_alert_hits,
+    )
+    from app.services.price_comparator import offer_from_snapshot_with_history
+
     settings = get_settings()
     alerts = PriceAlertStore(settings.obsidian_vault_path).list_alerts(user_id=user_id)
     if not alerts:
@@ -204,6 +280,13 @@ async def _price_alert_output(*, user_id: int) -> str:
 
 
 async def _morning_output(*, user_id: int, memory: ObsidianMemory) -> str:
+    from app.services.agenda import build_agenda
+    from app.services.assistant_jobs import AssistantJobStore
+    from app.services.daily_brief import DailyBrief, format_daily_brief
+    from app.services.market_watch import fetch_market_watch, format_market_brief
+    from app.services.pantry import PantryStore, format_pantry_suggestions
+    from app.services.spending import SpendingStore, format_budget_summary
+
     settings = get_settings()
     markets = format_market_brief(await fetch_market_watch())
     agenda = build_agenda(

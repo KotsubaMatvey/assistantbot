@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
+import time
+from collections import deque
+from math import ceil
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlparse
 
 from aiohttp import web
 
 from app.config import Settings
 from app.logging_config import get_logger
+from app.services.access_control import AccessControlStore
 from app.services.audit_log import AuditLogStore
 from app.services.llm_client import answer_question_with_llm
 from app.services.market_watch import analyze_market_watch, fetch_market_watch
+from app.services.mini_app import MAX_RAW_PAYLOAD_BYTES
 from app.services.mini_app_state import (
     add_mini_app_note,
     add_mini_app_person,
@@ -31,6 +37,29 @@ from app.services.obsidian_memory import ObsidianMemory
 from app.services.source_connectors import SourceStore
 
 logger = get_logger(__name__)
+SETTINGS_KEY = web.AppKey("settings", Settings)
+MAX_INIT_DATA_FUTURE_SKEW_SECONDS = 30
+
+
+class MiniAppRateLimiter:
+    def __init__(self, limit: int, *, window_seconds: int = 60) -> None:
+        self.limit = limit
+        self.window_seconds = window_seconds
+        self._requests: dict[str, deque[float]] = {}
+
+    def consume(self, key: str, *, now: float | None = None) -> int | None:
+        current = time.monotonic() if now is None else now
+        requests = self._requests.setdefault(key, deque())
+        cutoff = current - self.window_seconds
+        while requests and requests[0] <= cutoff:
+            requests.popleft()
+        if len(requests) >= self.limit:
+            return max(1, ceil(requests[0] + self.window_seconds - current))
+        requests.append(current)
+        return None
+
+
+RATE_LIMITER_KEY = web.AppKey("rate_limiter", MiniAppRateLimiter)
 
 
 class MiniAppHttpServer:
@@ -63,8 +92,12 @@ class MiniAppHttpServer:
 
 
 def create_mini_app_web_app(settings: Settings) -> web.Application:
-    app = web.Application(middlewares=[_cors_middleware])
-    app["settings"] = settings
+    app = web.Application(
+        middlewares=[_cors_middleware, _rate_limit_middleware],
+        client_max_size=MAX_RAW_PAYLOAD_BYTES,
+    )
+    app[SETTINGS_KEY] = settings
+    app[RATE_LIMITER_KEY] = MiniAppRateLimiter(settings.mini_app_rate_limit_per_minute)
     app.router.add_get("/api/health", _health)
     app.router.add_get("/api/miniapp/state", _state)
     app.router.add_get("/api/miniapp/markets", _markets)
@@ -87,7 +120,7 @@ def create_mini_app_web_app(settings: Settings) -> web.Application:
 
 
 async def _health(request: web.Request) -> web.Response:
-    return web.json_response({"ok": True})
+    return web.json_response({"ok": True, "service": "mini_app_api"})
 
 
 async def _state(request: web.Request) -> web.Response:
@@ -392,15 +425,43 @@ def _user_id_from_request(request: web.Request) -> int:
     settings = _settings(request)
     init_data = request.headers.get("X-Telegram-Init-Data") or request.query.get("initData", "")
     if init_data:
-        return validate_telegram_init_data(init_data, bot_token=settings.bot_token)
-    if settings.env == "local":
+        user_id = validate_telegram_init_data(
+            init_data,
+            bot_token=settings.bot_token,
+            max_age_seconds=settings.mini_app_init_data_max_age_seconds,
+        )
+        access = AccessControlStore(settings.obsidian_vault_path)
+        if not access.is_allowed(
+            user_id=user_id,
+            mode=settings.assistant_access_mode,
+            admin_ids=settings.admin_telegram_ids,
+        ):
+            raise web.HTTPForbidden(text="Mini App access is not approved")
+        return user_id
+    if (
+        settings.env == "local"
+        and settings.mini_app_dev_auth_enabled
+        and _is_loopback_host(request.remote)
+    ):
         raw_user_id = request.headers.get("X-Mini-App-Dev-User-Id") or request.query.get("user_id")
         if raw_user_id:
-            return int(raw_user_id)
+            try:
+                user_id = int(raw_user_id)
+            except ValueError as exc:
+                raise web.HTTPUnauthorized(text="development user_id is invalid") from exc
+            if user_id > 0:
+                return user_id
+            raise web.HTTPUnauthorized(text="development user_id is invalid")
     raise web.HTTPUnauthorized(text="Telegram initData is required")
 
 
-def validate_telegram_init_data(init_data: str, *, bot_token: str) -> int:
+def validate_telegram_init_data(
+    init_data: str,
+    *,
+    bot_token: str,
+    max_age_seconds: int = 3600,
+    now: int | None = None,
+) -> int:
     if not bot_token:
         raise web.HTTPUnauthorized(text="BOT_TOKEN is required for Mini App auth")
     pairs = dict(parse_qsl(init_data, keep_blank_values=True))
@@ -417,10 +478,18 @@ def validate_telegram_init_data(init_data: str, *, bot_token: str) -> int:
     if not hmac.compare_digest(expected_hash, received_hash):
         raise web.HTTPUnauthorized(text="Telegram initData hash is invalid")
     try:
+        auth_date = int(pairs["auth_date"])
         user = json.loads(pairs.get("user", "{}"))
         user_id = int(user["id"])
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise web.HTTPUnauthorized(text="Telegram initData user is invalid") from exc
+    current = int(time.time()) if now is None else now
+    if auth_date > current + MAX_INIT_DATA_FUTURE_SKEW_SECONDS:
+        raise web.HTTPUnauthorized(text="Telegram initData auth_date is invalid")
+    if current - auth_date > max_age_seconds:
+        raise web.HTTPUnauthorized(text="Telegram initData has expired")
+    if user_id <= 0:
+        raise web.HTTPUnauthorized(text="Telegram initData user is invalid")
     return user_id
 
 
@@ -441,7 +510,7 @@ def _add_static_routes(app: web.Application, settings: Settings) -> None:
 
 
 def _settings(request: web.Request) -> Settings:
-    return request.app["settings"]
+    return request.app[SETTINGS_KEY]
 
 
 def _record_mini_app_event(
@@ -470,9 +539,65 @@ def _event_detail(raw: object) -> str:
 @web.middleware
 async def _cors_middleware(request: web.Request, handler: Any) -> web.StreamResponse:
     response = await handler(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = (
-        "Content-Type, X-Telegram-Init-Data, X-Mini-App-Dev-User-Id"
-    )
+    origin = _cors_origin(request)
+    if origin is not None:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, X-Telegram-Init-Data, X-Mini-App-Dev-User-Id"
+        )
+        response.headers["Vary"] = "Origin"
     return response
+
+
+@web.middleware
+async def _rate_limit_middleware(request: web.Request, handler: Any) -> web.StreamResponse:
+    if request.path.startswith("/api/miniapp/") and request.method != "OPTIONS":
+        retry_after = request.app[RATE_LIMITER_KEY].consume(_rate_limit_key(request))
+        if retry_after is not None:
+            raise web.HTTPTooManyRequests(
+                text="Mini App rate limit exceeded",
+                headers={"Retry-After": str(retry_after)},
+            )
+    return await handler(request)
+
+
+def _rate_limit_key(request: web.Request) -> str:
+    proxy_client_ip = request.headers.get("X-Client-IP", "").strip()
+    if proxy_client_ip:
+        return proxy_client_ip
+    return request.remote or "unknown"
+
+
+def _cors_origin(request: web.Request) -> str | None:
+    origin = request.headers.get("Origin", "")
+    if not origin:
+        return None
+    settings = _settings(request)
+    configured = urlparse(settings.tg_mini_app_url)
+    configured_origin = (
+        f"{configured.scheme}://{configured.netloc}"
+        if configured.scheme in {"http", "https"} and configured.netloc
+        else ""
+    )
+    if origin == configured_origin:
+        return origin
+    parsed = urlparse(origin)
+    if (
+        settings.env == "local"
+        and settings.mini_app_dev_auth_enabled
+        and parsed.scheme == "http"
+        and parsed.hostname is not None
+        and _is_loopback_host(parsed.hostname)
+    ):
+        return origin
+    return None
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.rstrip(".").lower() == "localhost"

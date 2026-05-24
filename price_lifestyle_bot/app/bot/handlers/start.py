@@ -6,8 +6,6 @@ from aiogram.types import Message
 
 from app.bot.commands import help_text
 from app.bot.message_utils import answer_long
-from app.db.repositories.users import get_or_create_user
-from app.db.session import SessionLocal
 
 router = Router()
 
@@ -16,6 +14,9 @@ router = Router()
 async def start_handler(message: Message) -> None:
     if message.from_user is None:
         return
+    from app.db.repositories.users import get_or_create_user
+    from app.db.session import SessionLocal
+
     async with SessionLocal() as session:
         await get_or_create_user(session, message.from_user)
         await session.commit()

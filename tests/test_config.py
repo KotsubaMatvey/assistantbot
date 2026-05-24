@@ -35,6 +35,11 @@ def test_assistant_security_settings_read_from_env(monkeypatch) -> None:
     monkeypatch.setenv("ASSISTANT_GROUP_TRIGGER_POLICY", "mention")
     monkeypatch.setenv("ASSISTANT_DEFAULT_MODE", "buyer")
     monkeypatch.setenv("TG_MINI_APP_URL", "https://example.com/miniapp")
+    monkeypatch.setenv("MINI_APP_DEV_AUTH_ENABLED", "true")
+    monkeypatch.setenv("MINI_APP_INIT_DATA_MAX_AGE_SECONDS", "600")
+    monkeypatch.setenv("MINI_APP_RATE_LIMIT_PER_MINUTE", "45")
+    monkeypatch.setenv("ADMIN_BACKUP_ENABLED", "true")
+    monkeypatch.setenv("ADMIN_BACKUP_INTERVAL_HOURS", "12")
 
     settings = Settings()
 
@@ -45,6 +50,11 @@ def test_assistant_security_settings_read_from_env(monkeypatch) -> None:
     assert settings.assistant_group_trigger_policy == "mention"
     assert settings.assistant_default_mode == "buyer"
     assert settings.tg_mini_app_url == "https://example.com/miniapp"
+    assert settings.mini_app_dev_auth_enabled is True
+    assert settings.mini_app_init_data_max_age_seconds == 600
+    assert settings.mini_app_rate_limit_per_minute == 45
+    assert settings.admin_backup_enabled is True
+    assert settings.admin_backup_interval_hours == 12
 
 
 def test_feature_flags_and_live_refresh_settings_read_from_env(monkeypatch) -> None:

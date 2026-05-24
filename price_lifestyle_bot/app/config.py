@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     mini_app_api_host: str = "0.0.0.0"
     mini_app_api_port: int = 8080
     mini_app_static_dir: str = "miniapp/dist"
+    mini_app_dev_auth_enabled: bool = False
+    mini_app_init_data_max_age_seconds: int = Field(default=3600, ge=60, le=86400)
+    mini_app_rate_limit_per_minute: int = Field(default=120, ge=10, le=10000)
+    admin_backup_enabled: bool = False
+    admin_backup_interval_hours: int = Field(default=24, ge=1, le=168)
     bot_enabled_features: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["all"]
     )
@@ -227,6 +232,20 @@ class Settings(BaseSettings):
                 "mini_app_api_host": os.getenv("MINI_APP_API_HOST", "0.0.0.0"),
                 "mini_app_api_port": int(os.getenv("MINI_APP_API_PORT", "8080")),
                 "mini_app_static_dir": os.getenv("MINI_APP_STATIC_DIR", "miniapp/dist"),
+                "mini_app_dev_auth_enabled": (
+                    os.getenv("MINI_APP_DEV_AUTH_ENABLED", "false").lower() == "true"
+                ),
+                "mini_app_init_data_max_age_seconds": int(
+                    os.getenv("MINI_APP_INIT_DATA_MAX_AGE_SECONDS", "3600")
+                ),
+                "mini_app_rate_limit_per_minute": int(
+                    os.getenv("MINI_APP_RATE_LIMIT_PER_MINUTE", "120")
+                ),
+                "admin_backup_enabled": os.getenv("ADMIN_BACKUP_ENABLED", "false").lower()
+                == "true",
+                "admin_backup_interval_hours": int(
+                    os.getenv("ADMIN_BACKUP_INTERVAL_HOURS", "24")
+                ),
                 "bot_enabled_features": _parse_feature_names(
                     os.getenv("BOT_ENABLED_FEATURES", "all")
                 ),

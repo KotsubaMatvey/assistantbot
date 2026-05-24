@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import subprocess
+
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import Message
-from sqlalchemy import desc, select, text
+from aiogram.types import FSInputFile, Message
 
 from app.config import get_settings
-from app.db.models import ScrapeRun, Store
-from app.db.session import SessionLocal
-from app.scripts.refresh_prices import refresh_all_prices
-from app.scripts.scrape_once import scrape_store
 from app.services.access_control import AccessControlStore
 from app.services.admin_tools import (
     CheckResult,
@@ -19,23 +17,12 @@ from app.services.admin_tools import (
     check_secret_files,
     check_vault,
     create_backup,
+    create_postgres_dump,
     format_checks,
     format_health_score,
     repo_root_from_cwd,
     security_audit_checks,
 )
-from app.services.audit_log import AuditLogStore
-from app.services.llm_client import (
-    check_llm_providers,
-    format_llm_provider_checks,
-    llm_model_lines,
-    llm_provider_status_lines,
-    reset_llm_cooldowns,
-)
-from app.services.obsidian_memory import ObsidianMemory
-from app.services.price_health import format_catalog_health, get_catalog_health
-from app.services.scraper_diagnostics import diagnose_scraper, format_scraper_diagnostic
-from app.services.secret_scanner import format_secret_findings, scan_for_secrets
 
 router = Router()
 
@@ -49,6 +36,8 @@ async def admin_refresh_prices(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
     await message.answer("Запускаю обновление цен.")
+    from app.scripts.refresh_prices import refresh_all_prices
+
     result = await refresh_all_prices()
     if result.degraded_store_slugs:
         await message.answer(
@@ -67,6 +56,8 @@ async def admin_scrape_store(message: Message) -> None:
     if not store_slug:
         await message.answer("Использование: /admin_scrape_store <store_slug>")
         return
+    from app.scripts.scrape_once import scrape_store
+
     result = await scrape_store(store_slug)
     suffix = f", причина: {result.error_message}" if result.error_message else ""
     await message.answer(
@@ -79,6 +70,9 @@ async def admin_scrape_store(message: Message) -> None:
 async def admin_status(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from app.db.session import SessionLocal
+    from app.services.price_health import format_catalog_health, get_catalog_health
+
     settings = get_settings()
     async with SessionLocal() as session:
         health = await get_catalog_health(
@@ -110,12 +104,16 @@ async def admin_diag(message: Message) -> None:
 async def admin_doctor(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from app.services.obsidian_memory import ObsidianMemory
+    from app.services.reminder_delivery import ReminderDeliveryStore
+
     settings = get_settings()
     repo_root = repo_root_from_cwd()
     memory = ObsidianMemory(settings.obsidian_vault_path)
     user_id = message.from_user.id if message.from_user else 0
     indexed_count = memory.rebuild_user_index(user_id=user_id)
     access = AccessControlStore(settings.obsidian_vault_path)
+    delivery_attention = ReminderDeliveryStore(settings.obsidian_vault_path).attention_required()
     checks = [
         check_vault(settings.obsidian_vault_path),
         check_memory_index(settings.obsidian_vault_path),
@@ -134,9 +132,15 @@ async def admin_doctor(message: Message) -> None:
         f"Group trigger policy: {settings.assistant_group_trigger_policy}",
         f"Pending pairings: {len(access.list_pairing_codes())}",
         f"Allowed users: {len(access.allowed_users())}",
+        f"Reminder deliveries requiring review: {len(delivery_attention)}",
         f"Active space: {memory.get_active_space(user_id)}",
         f"Indexed user notes: {indexed_count}",
     ]
+    lines.extend(
+        f"Reminder review: u{delivery.user_id} {delivery.reminder_id} "
+        f"{delivery.status} attempts={delivery.attempts}"
+        for delivery in delivery_attention[:5]
+    )
     await message.answer("\n".join(lines)[:3900])
 
 
@@ -154,6 +158,8 @@ async def pairing_approve(message: Message) -> None:
         return
     await message.answer(f"Пользователь {user_id} добавлен в allowlist.")
 
+
+    from app.services.audit_log import AuditLogStore
 
     AuditLogStore(get_settings().obsidian_vault_path).record(
         user_id=message.from_user.id if message.from_user else 0,
@@ -178,11 +184,25 @@ async def admin_backup(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
     settings = get_settings()
-    result = create_backup(
-        repo_root=repo_root_from_cwd(),
-        vault_path=settings.obsidian_vault_path,
+    await message.answer("Создаю backup памяти и PostgreSQL.")
+    try:
+        database_dump = await asyncio.to_thread(create_postgres_dump, settings.database_url)
+        result = await asyncio.to_thread(
+            create_backup,
+            repo_root=repo_root_from_cwd(),
+            vault_path=settings.obsidian_vault_path,
+            database_dump=database_dump,
+        )
+    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+        await message.answer(f"Backup не создан: {exc}")
+        return
+    await message.answer_document(
+        FSInputFile(result.path),
+        caption=(
+            "Backup создан. Храни этот чувствительный архив безопасно. "
+            f"Файлов: {result.files_count}"
+        ),
     )
-    await message.answer(f"Backup создан: {result.path}\nФайлов: {result.files_count}")
 
 
 @router.message(Command("admin_deploy_check"))
@@ -201,6 +221,8 @@ async def admin_deploy_check(message: Message) -> None:
 async def llm_status(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from app.services.llm_client import llm_provider_status_lines
+
     await message.answer("\n".join(llm_provider_status_lines(get_settings()))[:3900])
 
 
@@ -208,6 +230,8 @@ async def llm_status(message: Message) -> None:
 async def llm_models(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from app.services.llm_client import llm_model_lines
+
     await message.answer("\n".join(llm_model_lines(get_settings()))[:3900])
 
 
@@ -215,6 +239,8 @@ async def llm_models(message: Message) -> None:
 async def llm_reset(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from app.services.llm_client import reset_llm_cooldowns
+
     provider = (message.text or "").partition(" ")[2].strip() or None
     count = reset_llm_cooldowns(get_settings(), provider_name=provider)
     target = provider or "all providers"
@@ -226,6 +252,8 @@ async def llm_test(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
     prompt = (message.text or "").partition(" ")[2].strip() or "Ответь одним словом: ok"
+    from app.services.llm_client import check_llm_providers, format_llm_provider_checks
+
     checks = await check_llm_providers(get_settings(), prompt=prompt)
     await message.answer(format_llm_provider_checks(checks)[:3900])
 
@@ -235,6 +263,9 @@ async def admin_secret_scan(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
     settings = get_settings()
+    from app.services.audit_log import AuditLogStore
+    from app.services.secret_scanner import format_secret_findings, scan_for_secrets
+
     findings = scan_for_secrets(repo_root_from_cwd(), settings.obsidian_vault_path)
     AuditLogStore(settings.obsidian_vault_path).record(
         user_id=message.from_user.id if message.from_user else 0,
@@ -248,6 +279,8 @@ async def admin_secret_scan(message: Message) -> None:
 async def admin_audit(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from app.services.audit_log import AuditLogStore
+
     events = AuditLogStore(get_settings().obsidian_vault_path).list_events()
     if not events:
         await message.answer("Audit log пуст.")
@@ -283,6 +316,11 @@ async def admin_onboarding(message: Message) -> None:
 async def admin_logs(message: Message) -> None:
     if not _is_admin(message.from_user.id if message.from_user else None):
         return
+    from sqlalchemy import desc, select
+
+    from app.db.models import ScrapeRun, Store
+    from app.db.session import SessionLocal
+
     async with SessionLocal() as session:
         rows = await session.execute(
             select(Store.slug, ScrapeRun.status, ScrapeRun.finished_at, ScrapeRun.error_message)
@@ -313,14 +351,22 @@ async def admin_scraper_diag(message: Message) -> None:
     store_slug = args[1]
     query = args[2] if len(args) > 2 else "молоко"
     try:
+        from app.services.scraper_diagnostics import diagnose_scraper
+
         result = await diagnose_scraper(store_slug, query=query)
     except Exception as exc:
         await message.answer(f"Диагностика не запустилась: {str(exc)[:300]}")
         return
+    from app.services.scraper_diagnostics import format_scraper_diagnostic
+
     await message.answer(format_scraper_diagnostic(result))
 
 
 async def _db_check() -> CheckResult:
+    from sqlalchemy import text
+
+    from app.db.session import SessionLocal
+
     try:
         async with SessionLocal() as session:
             await session.execute(text("select 1"))

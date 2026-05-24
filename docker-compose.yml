@@ -4,9 +4,9 @@ services:
     environment:
       POSTGRES_DB: pricebot
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -18,16 +18,16 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
   bot:
     build: .
     restart: unless-stopped
     environment:
       BOT_TOKEN: ${BOT_TOKEN:-}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/pricebot}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      ENV: ${ENV:-local}
+      ENV: ${ENV:-production}
       CITY: ${CITY:-Бор}
       PRICE_FRESHNESS_HOURS: ${PRICE_FRESHNESS_HOURS:-24}
       SCRAPE_INTERVAL_HOURS: ${SCRAPE_INTERVAL_HOURS:-12}
@@ -76,11 +76,16 @@ services:
       MINI_APP_API_HOST: ${MINI_APP_API_HOST:-0.0.0.0}
       MINI_APP_API_PORT: ${MINI_APP_API_PORT:-8080}
       MINI_APP_STATIC_DIR: ${MINI_APP_STATIC_DIR:-miniapp/dist}
+      MINI_APP_DEV_AUTH_ENABLED: ${MINI_APP_DEV_AUTH_ENABLED:-false}
+      MINI_APP_INIT_DATA_MAX_AGE_SECONDS: ${MINI_APP_INIT_DATA_MAX_AGE_SECONDS:-3600}
+      MINI_APP_RATE_LIMIT_PER_MINUTE: ${MINI_APP_RATE_LIMIT_PER_MINUTE:-120}
       BOT_ENABLED_FEATURES: ${BOT_ENABLED_FEATURES:-all}
       BOT_DISABLED_FEATURES: ${BOT_DISABLED_FEATURES:-}
       LIVE_PRICE_REFRESH_ENABLED: ${LIVE_PRICE_REFRESH_ENABLED:-false}
       LIVE_PRICE_REFRESH_LIMIT_PER_QUERY: ${LIVE_PRICE_REFRESH_LIMIT_PER_QUERY:-10}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-[]}
+      ADMIN_BACKUP_ENABLED: ${ADMIN_BACKUP_ENABLED:-false}
+      ADMIN_BACKUP_INTERVAL_HOURS: ${ADMIN_BACKUP_INTERVAL_HOURS:-24}
       MAGNIT_SHOP_CODE: ${MAGNIT_SHOP_CODE:-}
       MAGNIT_SHOP_TYPE: ${MAGNIT_SHOP_TYPE:-}
       PYATEROCHKA_STORE_ID: ${PYATEROCHKA_STORE_ID:-}
@@ -97,11 +102,38 @@ services:
       - ./assistantbotmemory:/app/assistantbotmemory
       - ./miniapp/dist:/app/miniapp/dist:ro
     ports:
-      - "${MINI_APP_API_PORT:-8080}:8080"
+      - "127.0.0.1:${MINI_APP_API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/api/health >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     command: >
       sh -c "alembic upgrade head &&
              python -m app.scripts.seed_stores &&
              python -m app.main"
 
+  gateway:
+    image: caddy:2-alpine
+    profiles: ["production"]
+    restart: unless-stopped
+    depends_on:
+      bot:
+        condition: service_healthy
+    environment:
+      MINI_APP_DOMAIN: ${MINI_APP_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./miniapp/dist:/srv/miniapp:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:

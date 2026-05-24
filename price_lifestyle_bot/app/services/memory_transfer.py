@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+MAX_IMPORT_ARCHIVE_BYTES = 20 * 1024 * 1024
+MAX_IMPORT_EXTRACTED_BYTES = 100 * 1024 * 1024
+
 
 @dataclass(frozen=True)
 class MemoryTransferResult:
@@ -47,12 +50,23 @@ def import_user_memory(
     archive = Path(archive_path).expanduser()
     if not archive.exists():
         raise FileNotFoundError(str(archive))
+    if archive.stat().st_size > MAX_IMPORT_ARCHIVE_BYTES:
+        raise ValueError("Memory archive is too large")
     imported = 0
+    extracted_bytes = 0
     target_root = (vault / "users" / str(user_id)).resolve()
-    with zipfile.ZipFile(archive) as zf:
-        for name in zf.namelist():
+    try:
+        zf = zipfile.ZipFile(archive)
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Memory archive is not a valid ZIP file") from exc
+    with zf:
+        for info in zf.infolist():
+            name = info.filename
             if name.endswith("/") or not _is_safe_zip_member(name):
                 continue
+            extracted_bytes += info.file_size
+            if extracted_bytes > MAX_IMPORT_EXTRACTED_BYTES:
+                raise ValueError("Memory archive contents are too large")
             parts = Path(name).parts
             if len(parts) >= 3 and parts[0] == "users" and parts[1].isdigit():
                 relative = Path(*parts[2:])

@@ -5,9 +5,6 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.keyboards import STORE_LABELS, settings_keyboard
-from app.db.models import ComparisonMode
-from app.db.repositories.users import get_or_create_user, get_settings_for_user
-from app.db.session import SessionLocal
 
 router = Router()
 
@@ -16,6 +13,9 @@ router = Router()
 async def settings_handler(message: Message) -> None:
     if message.from_user is None:
         return
+    from app.db.repositories.users import get_or_create_user
+    from app.db.session import SessionLocal
+
     async with SessionLocal() as session:
         user = await get_or_create_user(session, message.from_user)
         await session.commit()
@@ -30,6 +30,9 @@ async def settings_handler(message: Message) -> None:
 async def toggle_store(callback: CallbackQuery) -> None:
     if callback.from_user is None or callback.data is None:
         return
+    from app.db.repositories.users import get_or_create_user, get_settings_for_user
+    from app.db.session import SessionLocal
+
     slug = callback.data.split(":", 1)[1]
     async with SessionLocal() as session:
         user = await get_or_create_user(session, callback.from_user)
@@ -50,6 +53,9 @@ async def toggle_store(callback: CallbackQuery) -> None:
 async def toggle_card(callback: CallbackQuery) -> None:
     if callback.from_user is None or callback.data is None:
         return
+    from app.db.repositories.users import get_or_create_user, get_settings_for_user
+    from app.db.session import SessionLocal
+
     slug = callback.data.split(":", 1)[1]
     attr = f"has_{slug}_card"
     async with SessionLocal() as session:
@@ -64,6 +70,10 @@ async def toggle_card(callback: CallbackQuery) -> None:
 async def set_mode(callback: CallbackQuery) -> None:
     if callback.from_user is None or callback.data is None:
         return
+    from app.db.models import ComparisonMode
+    from app.db.repositories.users import get_or_create_user, get_settings_for_user
+    from app.db.session import SessionLocal
+
     mode = callback.data.split(":", 1)[1]
     async with SessionLocal() as session:
         user = await get_or_create_user(session, callback.from_user)

@@ -1,0 +1,15 @@
+{$MINI_APP_DOMAIN:localhost} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy bot:8080 {
+			header_up X-Client-IP {remote_host}
+		}
+	}
+
+	handle {
+		root * /srv/miniapp
+		try_files {path} /index.html
+		file_server
+	}
+}

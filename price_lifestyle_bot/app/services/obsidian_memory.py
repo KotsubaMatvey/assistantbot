@@ -64,6 +64,7 @@ DEFAULT_SPACE = "default"
 INDEX_DIR = ".assistantbot"
 INDEX_FILE = "memory-index.sqlite3"
 MAX_CHUNK_LENGTH = 1200
+SEMANTIC_VECTOR_MIN_SCORE = 0.18
 RESOLVER_TEXT = """# Brain Resolver
 
 Use this order when filing memory:
@@ -425,6 +426,111 @@ class ObsidianMemory:
         if not query_vector:
             return []
         snippet_terms = _semantic_terms(" ".join([query, *expanded]))
+        indexed_results = self._semantic_index_search(
+            user_id=user_id,
+            query_vector=query_vector,
+            snippet_terms=snippet_terms,
+            tokens=tokens,
+            expanded=expanded,
+            limit=limit,
+            space=space,
+        )
+        if indexed_results is not None:
+            return indexed_results
+        return self._semantic_scan_search(
+            user_id=user_id,
+            query_vector=query_vector,
+            snippet_terms=snippet_terms,
+            tokens=tokens,
+            expanded=expanded,
+            limit=limit,
+            space=space,
+        )
+
+    def _semantic_index_search(
+        self,
+        *,
+        user_id: int,
+        query_vector: Counter[str],
+        snippet_terms: list[str],
+        tokens: list[str],
+        expanded: list[str],
+        limit: int,
+        space: str | None,
+    ) -> list[MemorySearchResult] | None:
+        query_norm = _semantic_norm(query_vector)
+        if not query_norm:
+            return []
+        try:
+            with self._connect_index() as connection:
+                self._prepare_index(connection)
+                params: list[object] = [user_id]
+                space_filter = ""
+                if space is not None:
+                    space_filter = " and space = ?"
+                    params.append(_normalize_space(space))
+                rows = connection.execute(
+                    f"""
+                    select path, chunk_no, body, note_type, tags, space, source_type, source_id,
+                           source_url, title, vector_json, norm
+                    from memory_vectors
+                    where user_id = ?{space_filter}
+                    """,
+                    params,
+                ).fetchall()
+        except sqlite3.Error:
+            return None
+        if not rows:
+            return None
+
+        results: list[MemorySearchResult] = []
+        for row in rows:
+            vector = _semantic_vector_from_json(str(row[10]))
+            norm = float(row[11] or 0)
+            if not vector or not norm:
+                continue
+            body = str(row[2])
+            tags = [tag for tag in str(row[4]).split(",") if tag]
+            searchable = " ".join([body, str(row[3]), " ".join(tags), str(row[9])])
+            keyword_score = _score_text(searchable, tokens, expanded)
+            semantic_score = _semantic_similarity_with_norm(
+                query_vector,
+                query_norm,
+                vector,
+                norm,
+            )
+            if keyword_score <= 0 and semantic_score < SEMANTIC_VECTOR_MIN_SCORE:
+                continue
+            score = min(keyword_score * 10, 120) + int(semantic_score * 100)
+            results.append(
+                MemorySearchResult(
+                    path=Path(str(row[0])),
+                    score=score,
+                    snippet=_snippet(body, snippet_terms),
+                    note_type=str(row[3]),
+                    tags=tags,
+                    space=str(row[5]),
+                    source_type=str(row[6]),
+                    source_id=str(row[7]) or "manual",
+                    source_url=str(row[8]) or None,
+                    title=str(row[9]) or None,
+                    chunk_no=int(row[1]),
+                )
+            )
+        results.sort(key=lambda result: (-result.score, str(result.path), result.chunk_no))
+        return results[:limit]
+
+    def _semantic_scan_search(
+        self,
+        *,
+        user_id: int,
+        query_vector: Counter[str],
+        snippet_terms: list[str],
+        tokens: list[str],
+        expanded: list[str],
+        limit: int,
+        space: str | None,
+    ) -> list[MemorySearchResult]:
         results: list[MemorySearchResult] = []
         for path, text in self._iter_user_notes(user_id):
             metadata = _parse_frontmatter(text)
@@ -436,7 +542,7 @@ class ObsidianMemory:
             )
             keyword_score = _score_text(searchable, tokens, expanded)
             semantic_score = _semantic_similarity(query_vector, _semantic_vector(searchable))
-            if keyword_score <= 0 and semantic_score < 0.18:
+            if keyword_score <= 0 and semantic_score < SEMANTIC_VECTOR_MIN_SCORE:
                 continue
             score = min(keyword_score * 10, 120) + int(semantic_score * 100)
             results.append(
@@ -1056,6 +1162,10 @@ class ObsidianMemory:
     def _index_note(self, *, user_id: int, path: Path) -> None:
         if not path.exists():
             return
+        try:
+            indexed_mtime = str(path.stat().st_mtime_ns)
+        except OSError:
+            return
         text = path.read_text(encoding="utf-8", errors="ignore")
         metadata = _parse_frontmatter(text)
         body = _strip_frontmatter(text).strip()
@@ -1089,13 +1199,43 @@ class ObsidianMemory:
                             chunk,
                         ),
                     )
+                    searchable = " ".join(
+                        [chunk, metadata.note_type, " ".join(metadata.tags), metadata.title or ""]
+                    )
+                    vector = _semantic_vector(searchable)
+                    norm = _semantic_norm(vector)
+                    if vector and norm:
+                        connection.execute(
+                            """
+                            insert or replace into memory_vectors(
+                                path, chunk_no, user_id, space, note_type, tags, source_type,
+                                source_id, source_url, title, body, vector_json, norm
+                            )
+                            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                str(path),
+                                chunk_no,
+                                user_id,
+                                metadata.space,
+                                metadata.note_type,
+                                ",".join(metadata.tags),
+                                metadata.source_type,
+                                metadata.source_id,
+                                metadata.source_url or "",
+                                metadata.title or path.name,
+                                chunk,
+                                _semantic_vector_to_json(vector),
+                                norm,
+                            ),
+                        )
                 connection.execute(
                     """
                     insert or replace into memory_sources(
                         path, user_id, space, note_type, source_type, source_id, source_url, title,
-                        checksum, status, created_at, updated_at
+                        checksum, status, created_at, updated_at, indexed_mtime
                     )
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(path),
@@ -1110,10 +1250,53 @@ class ObsidianMemory:
                         metadata.status,
                         metadata.created_at.isoformat() if metadata.created_at else "",
                         metadata.updated_at.isoformat() if metadata.updated_at else "",
+                        indexed_mtime,
                     ),
                 )
         except sqlite3.Error:
             return
+
+    def _refresh_user_index(self, *, user_id: int) -> None:
+        directory = self._user_notes_dir(user_id)
+        if not directory.exists():
+            self._clear_user_index(user_id=user_id)
+            return
+        try:
+            with self._connect_index() as connection:
+                self._prepare_index(connection)
+                source_rows = connection.execute(
+                    "select path, indexed_mtime from memory_sources where user_id = ?",
+                    (user_id,),
+                ).fetchall()
+                vector_paths = {
+                    str(row[0])
+                    for row in connection.execute(
+                        "select distinct path from memory_vectors where user_id = ?",
+                        (user_id,),
+                    ).fetchall()
+                }
+        except sqlite3.Error:
+            self.rebuild_user_index(user_id=user_id)
+            return
+
+        indexed = {str(row[0]): str(row[1] or "") for row in source_rows}
+        current: dict[str, str] = {}
+        stale_paths: list[Path] = []
+        for path in directory.glob("*.md"):
+            try:
+                indexed_mtime = str(path.stat().st_mtime_ns)
+            except OSError:
+                continue
+            path_key = str(path)
+            current[path_key] = indexed_mtime
+            if indexed.get(path_key) != indexed_mtime or path_key not in vector_paths:
+                stale_paths.append(path)
+
+        for path_key in indexed:
+            if path_key not in current:
+                self._delete_from_index(Path(path_key))
+        for path in stale_paths:
+            self._index_note(user_id=user_id, path=path)
 
     def _search_index(
         self,
@@ -1123,7 +1306,7 @@ class ObsidianMemory:
         limit: int,
         space: str | None,
     ) -> list[MemorySearchResult]:
-        self.rebuild_user_index(user_id=user_id)
+        self._refresh_user_index(user_id=user_id)
         fts_query = _fts_query(query)
         if not fts_query:
             return []
@@ -1183,6 +1366,7 @@ class ObsidianMemory:
             active_connection = connection or self._connect_index()
             self._prepare_index(active_connection)
             active_connection.execute("delete from memory_fts where path = ?", (str(path),))
+            active_connection.execute("delete from memory_vectors where path = ?", (str(path),))
             active_connection.execute("delete from memory_sources where path = ?", (str(path),))
             if own_connection:
                 active_connection.commit()
@@ -1197,6 +1381,7 @@ class ObsidianMemory:
             with self._connect_index() as connection:
                 self._prepare_index(connection)
                 connection.execute("delete from memory_fts where user_id = ?", (user_id,))
+                connection.execute("delete from memory_vectors where user_id = ?", (user_id,))
                 connection.execute("delete from memory_sources where user_id = ?", (user_id,))
         except sqlite3.Error:
             return
@@ -1243,14 +1428,44 @@ class ObsidianMemory:
                 checksum text,
                 status text,
                 created_at text,
-                updated_at text
+                updated_at text,
+                indexed_mtime text not null default ''
             )
             """
         )
-        if "source_id" not in _sqlite_columns(connection, "memory_sources"):
+        source_columns = _sqlite_columns(connection, "memory_sources")
+        if "source_id" not in source_columns:
             connection.execute(
                 "alter table memory_sources add column source_id text not null default 'manual'"
             )
+        if "indexed_mtime" not in source_columns:
+            connection.execute(
+                "alter table memory_sources add column indexed_mtime text not null default ''"
+            )
+        connection.execute(
+            """
+            create table if not exists memory_vectors (
+                path text not null,
+                chunk_no integer not null,
+                user_id integer not null,
+                space text not null,
+                note_type text not null,
+                tags text not null,
+                source_type text not null,
+                source_id text not null default 'manual',
+                source_url text,
+                title text,
+                body text not null,
+                vector_json text not null,
+                norm real not null,
+                primary key(path, chunk_no)
+            )
+            """
+        )
+        connection.execute(
+            "create index if not exists idx_memory_vectors_user_space "
+            "on memory_vectors(user_id, space)"
+        )
 
     def _set_frontmatter_value(self, path: Path, *, key: str, value: str) -> None:
         text = path.read_text(encoding="utf-8")
@@ -1815,14 +2030,45 @@ def _expand_semantic_terms(terms: set[str]) -> set[str]:
 def _semantic_similarity(left: Counter[str], right: Counter[str]) -> float:
     if not left or not right:
         return 0.0
+    return _semantic_similarity_with_norm(left, _semantic_norm(left), right, _semantic_norm(right))
+
+
+def _semantic_similarity_with_norm(
+    left: Counter[str],
+    left_norm: float,
+    right: Counter[str],
+    right_norm: float,
+) -> float:
+    if not left or not right or not left_norm or not right_norm:
+        return 0.0
     dot = sum(weight * right.get(term, 0) for term, weight in left.items())
     if dot <= 0:
         return 0.0
-    left_norm = sqrt(sum(weight * weight for weight in left.values()))
-    right_norm = sqrt(sum(weight * weight for weight in right.values()))
-    if not left_norm or not right_norm:
-        return 0.0
     return dot / (left_norm * right_norm)
+
+
+def _semantic_norm(vector: Counter[str]) -> float:
+    return sqrt(sum(weight * weight for weight in vector.values()))
+
+
+def _semantic_vector_to_json(vector: Counter[str]) -> str:
+    return json.dumps(dict(sorted(vector.items())), ensure_ascii=False, separators=(",", ":"))
+
+
+def _semantic_vector_from_json(raw: str) -> Counter[str]:
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        return Counter()
+    if not isinstance(value, dict):
+        return Counter()
+    return Counter(
+        {
+            str(term): int(weight)
+            for term, weight in value.items()
+            if isinstance(weight, (int, float)) and weight > 0
+        }
+    )
 
 
 def _character_trigrams(token: str) -> list[str]:

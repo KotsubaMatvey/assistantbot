@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import tempfile
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
+
+from sqlalchemy.engine import make_url
 
 
 @dataclass(frozen=True)
@@ -21,12 +27,21 @@ class BackupResult:
     files_count: int
 
 
+@dataclass(frozen=True)
+class RestoreResult:
+    archive_path: Path
+    vault_files: int
+    database_included: bool
+    previous_vault_path: Path | None = None
+
+
 class SecuritySettings(Protocol):
     obsidian_vault_path: str
     assistant_access_mode: str
     assistant_context_visibility: str
     assistant_group_trigger_policy: str
     admin_telegram_ids: list[int]
+    mini_app_dev_auth_enabled: bool
 
 
 def check_vault(vault_path: str) -> CheckResult:
@@ -61,7 +76,9 @@ def security_audit_checks(*, settings: SecuritySettings, repo_root: str) -> list
         check_admin_ids(settings.admin_telegram_ids, settings.assistant_access_mode),
         check_context_visibility(settings.assistant_context_visibility),
         check_group_trigger_policy(settings.assistant_group_trigger_policy),
+        check_mini_app_dev_auth(settings.mini_app_dev_auth_enabled),
         check_vault_gitignore(repo_root),
+        check_backup_gitignore(repo_root),
         check_secret_files(repo_root),
     ]
 
@@ -94,6 +111,16 @@ def check_group_trigger_policy(value: str) -> CheckResult:
     return CheckResult("Group trigger policy", False, f"{value}; recommended mention")
 
 
+def check_mini_app_dev_auth(enabled: bool) -> CheckResult:
+    if enabled:
+        return CheckResult(
+            "Mini App dev auth",
+            False,
+            "enabled; disable before deployment",
+        )
+    return CheckResult("Mini App dev auth", True, "disabled")
+
+
 def check_vault_gitignore(repo_root: str) -> CheckResult:
     gitignore = Path(repo_root) / ".gitignore"
     if not gitignore.exists():
@@ -105,6 +132,19 @@ def check_vault_gitignore(repo_root: str) -> CheckResult:
     if ignored:
         return CheckResult("Vault gitignore", True, "assistantbotmemory ignored")
     return CheckResult("Vault gitignore", False, "assistantbotmemory is not ignored")
+
+
+def check_backup_gitignore(repo_root: str) -> CheckResult:
+    gitignore = Path(repo_root) / ".gitignore"
+    if not gitignore.exists():
+        return CheckResult("Backup gitignore", False, ".gitignore missing")
+    ignored = any(
+        line.strip().rstrip("/") == "backups"
+        for line in gitignore.read_text(encoding="utf-8", errors="ignore").splitlines()
+    )
+    if ignored:
+        return CheckResult("Backup gitignore", True, "backups ignored")
+    return CheckResult("Backup gitignore", False, "backups is not ignored")
 
 
 def check_secret_files(repo_root: str) -> CheckResult:
@@ -146,6 +186,7 @@ def create_backup(
     repo_root: str,
     vault_path: str,
     backup_dir: str = "backups",
+    database_dump: bytes | None = None,
 ) -> BackupResult:
     root = Path(repo_root)
     vault = Path(vault_path).expanduser()
@@ -164,15 +205,101 @@ def create_backup(
             if path.exists():
                 zf.write(path, Path("project") / relative)
                 files_count += 1
+        if database_dump is not None:
+            zf.writestr("database/postgres.dump", database_dump)
+            files_count += 1
         zf.writestr(
             "backup-info.txt",
             f"created_at={datetime.now(UTC).isoformat()}\n"
             f"repo_root={root}\n"
             f"vault_path={vault}\n"
-            "database_dump=not_included\n",
+            f"database_dump={'included' if database_dump is not None else 'not_included'}\n",
         )
         files_count += 1
     return BackupResult(path=archive, files_count=files_count)
+
+
+def create_postgres_dump(database_url: str) -> bytes:
+    command, environment = _postgres_command("pg_dump", database_url)
+    result = subprocess.run(
+        [*command, "--format=custom", "--no-owner", "--no-privileges"],
+        check=True,
+        capture_output=True,
+        env=environment,
+    )
+    return result.stdout
+
+
+def restore_postgres_dump(database_url: str, dump_path: Path) -> None:
+    command, environment = _postgres_command("pg_restore", database_url)
+    subprocess.run(
+        [
+            *command,
+            "--clean",
+            "--if-exists",
+            "--no-owner",
+            "--no-privileges",
+            str(dump_path),
+        ],
+        check=True,
+        env=environment,
+    )
+
+
+def restore_backup(
+    *,
+    archive_path: str,
+    vault_path: str,
+    apply: bool = False,
+    database_restorer: Callable[[Path], None] | None = None,
+) -> RestoreResult:
+    archive = Path(archive_path).expanduser()
+    vault = Path(vault_path).expanduser()
+    if not archive.exists():
+        raise FileNotFoundError(str(archive))
+    with zipfile.ZipFile(archive) as zf:
+        names = zf.namelist()
+        if any(not _is_safe_zip_member(name) for name in names):
+            raise ValueError("Backup archive contains unsafe paths")
+        vault_members = [
+            name
+            for name in names
+            if name.startswith("assistantbotmemory/") and not name.endswith("/")
+        ]
+        database_included = "database/postgres.dump" in names
+        if not database_included:
+            raise ValueError("Backup archive does not contain a PostgreSQL dump")
+        if not apply:
+            return RestoreResult(
+                archive_path=archive,
+                vault_files=len(vault_members),
+                database_included=True,
+            )
+        if database_restorer is None:
+            raise ValueError("A database restorer is required when applying a backup")
+        vault.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=vault.parent) as temporary:
+            staging_root = Path(temporary)
+            for name in [*vault_members, "database/postgres.dump"]:
+                zf.extract(name, staging_root)
+            staged_vault = staging_root / "assistantbotmemory"
+            staged_vault.mkdir(parents=True, exist_ok=True)
+            dump_path = staging_root / "database" / "postgres.dump"
+            database_restorer(dump_path)
+            previous_vault: Path | None = None
+            if vault.exists():
+                timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+                previous_vault = vault.with_name(f"{vault.name}.pre-restore-{timestamp}")
+                if previous_vault.exists():
+                    raise FileExistsError(str(previous_vault))
+                shutil.move(str(vault), str(previous_vault))
+            shutil.move(str(staged_vault), str(vault))
+            return RestoreResult(
+                archive_path=archive,
+                vault_files=len(vault_members),
+                database_included=True,
+                previous_vault_path=previous_vault,
+            )
 
 
 def format_checks(checks: list[CheckResult]) -> str:
@@ -209,3 +336,25 @@ def _iter_backup_files(vault: Path) -> list[Path]:
     if not vault.exists():
         return []
     return [path for path in vault.rglob("*") if path.is_file()]
+
+
+def _is_safe_zip_member(name: str) -> bool:
+    path = Path(name)
+    return not path.is_absolute() and ".." not in path.parts
+
+
+def _postgres_command(program: str, database_url: str) -> tuple[list[str], dict[str, str]]:
+    url = make_url(database_url)
+    if not url.database:
+        raise ValueError("DATABASE_URL must include a database name")
+    environment = os.environ.copy()
+    if url.password:
+        environment["PGPASSWORD"] = url.password
+    command = [program, "--dbname", url.database]
+    if url.username:
+        command.extend(["--username", url.username])
+    if url.host:
+        command.extend(["--host", url.host])
+    if url.port:
+        command.extend(["--port", str(url.port)])
+    return command, environment

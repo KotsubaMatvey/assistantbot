@@ -8,14 +8,8 @@ from aiogram.types import Message
 
 from app.bot.message_utils import answer_long
 from app.config import get_settings
-from app.db.repositories.baskets import create_basket, get_latest_basket_for_user
-from app.db.repositories.prices import get_latest_prices_by_store_products, get_price_history_stats
-from app.db.repositories.users import get_or_create_user, get_settings_for_user
-from app.db.session import SessionLocal
-from app.scrapers.registry import list_scrapers
 from app.services.basket_parser import parse_basket
 from app.services.formatting import format_price_comparison
-from app.services.live_price_refresh import refresh_prices_for_items
 from app.services.obsidian_memory import ObsidianMemory, PriceMemoryContext
 from app.services.price_comparator import compare_prices, offer_from_snapshot_with_history
 
@@ -37,6 +31,10 @@ async def prices_command(message: Message) -> None:
 async def last_basket_command(message: Message) -> None:
     if message.from_user is None:
         return
+    from app.db.repositories.baskets import get_latest_basket_for_user
+    from app.db.repositories.users import get_or_create_user
+    from app.db.session import SessionLocal
+
     async with SessionLocal() as session:
         user = await get_or_create_user(session, message.from_user)
         basket = await get_latest_basket_for_user(session, user.id)
@@ -60,6 +58,10 @@ async def _handle_basket(message: Message, text: str) -> None:
     settings = get_settings()
     memory = ObsidianMemory(settings.obsidian_vault_path)
     memory_context = PriceMemoryContext()
+    from app.db.repositories.baskets import create_basket
+    from app.db.repositories.users import get_or_create_user, get_settings_for_user
+    from app.db.session import SessionLocal
+
     async with SessionLocal() as session:
         user = await get_or_create_user(session, message.from_user)
         user_settings = await get_settings_for_user(session, user.id)
@@ -71,6 +73,8 @@ async def _handle_basket(message: Message, text: str) -> None:
         await session.commit()
 
     if settings.live_price_refresh_enabled:
+        from app.services.live_price_refresh import refresh_prices_for_items
+
         await message.answer("Обновляю текущие цены по выбранным магазинам.")
         refresh_result = await refresh_prices_for_items(
             items,
@@ -83,6 +87,11 @@ async def _handle_basket(message: Message, text: str) -> None:
                 f"{', '.join(refresh_result.failed_store_slugs)}. "
                 "Использую последние сохраненные данные."
             )
+
+    from app.db.repositories.prices import (
+        get_latest_prices_by_store_products,
+        get_price_history_stats,
+    )
 
     async with SessionLocal() as session:
         snapshots = await get_latest_prices_by_store_products(session)
@@ -125,4 +134,6 @@ async def _handle_basket(message: Message, text: str) -> None:
 
 def _selected_store_slugs(user_settings: object) -> list[str]:
     enabled = list(getattr(user_settings, "enabled_store_slugs", []) or [])
+    from app.scrapers.registry import list_scrapers
+
     return enabled or list_scrapers()

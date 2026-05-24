@@ -48,7 +48,15 @@ def _iter_scan_files(root: Path, *, max_file_size: int) -> list[Path]:
         return [root] if _can_scan(root, max_file_size=max_file_size) else []
     if not root.exists():
         return []
-    ignored_parts = {".git", ".venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+    ignored_parts = {
+        ".git",
+        ".venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+    }
     return [
         path
         for path in root.rglob("*")

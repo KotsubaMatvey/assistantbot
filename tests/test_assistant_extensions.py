@@ -3,10 +3,17 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import time
+import zipfile
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import pytest
+from aiohttp import web
+from app.config import Settings
+from app.services import memory_transfer
+from app.services.access_control import AccessControlStore
 from app.services.agenda import build_agenda
 from app.services.assistant_jobs import AssistantJobStore, parse_job_request
 from app.services.assistant_tools import ToolUsageStore, format_tool_registry, list_tools, run_tool
@@ -16,10 +23,18 @@ from app.services.memory_transfer import export_user_memory, import_user_memory
 from app.services.mini_app import (
     MAX_ASSISTANT_TEXT_CHARS,
     MAX_BASKET_TEXT_CHARS,
+    MAX_RAW_PAYLOAD_BYTES,
     mini_app_manifest,
     parse_mini_app_payload,
 )
-from app.services.mini_app_server import validate_telegram_init_data
+from app.services.mini_app_server import (
+    SETTINGS_KEY,
+    MiniAppRateLimiter,
+    _cors_origin,
+    _user_id_from_request,
+    create_mini_app_web_app,
+    validate_telegram_init_data,
+)
 from app.services.mini_app_state import (
     add_mini_app_source,
     add_mini_app_task,
@@ -59,6 +74,22 @@ def test_memory_export_import_roundtrip_dry_run_and_apply(tmp_path) -> None:
     assert (target / "users" / "123").exists()
 
 
+def test_memory_import_rejects_archive_with_excessive_extracted_content(
+    tmp_path, monkeypatch
+) -> None:
+    archive = tmp_path / "large.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("users/123/notes/note.md", "large")
+    monkeypatch.setattr(memory_transfer, "MAX_IMPORT_EXTRACTED_BYTES", 2)
+
+    with pytest.raises(ValueError, match="contents are too large"):
+        import_user_memory(
+            vault_path=str(tmp_path / "destination"),
+            user_id=123,
+            archive_path=str(archive),
+        )
+
+
 def test_standing_orders_and_audit_log(tmp_path) -> None:
     orders = StandingOrderStore(str(tmp_path))
     audit = AuditLogStore(str(tmp_path))
@@ -90,6 +121,17 @@ def test_secret_scanner_redacts_findings(tmp_path) -> None:
     assert findings
     assert findings[0].kind in {"telegram_bot_token", "generic_api_key"}
     assert "..." in findings[0].preview
+
+
+def test_secret_scanner_skips_installed_dependencies(tmp_path) -> None:
+    dependency = tmp_path / "node_modules" / "package"
+    dependency.mkdir(parents=True)
+    dependency.joinpath("index.js").write_text(
+        "token='" + "abcdefghijklmnop" + "qrstuvwxyz123456'",
+        encoding="utf-8",
+    )
+
+    assert scan_for_secrets(str(tmp_path)) == []
 
 
 def test_job_delivery_mode_parser_and_tools(tmp_path) -> None:
@@ -225,9 +267,95 @@ def test_mini_app_state_uses_live_local_stores(tmp_path) -> None:
 
 
 def test_telegram_init_data_validation_extracts_user_id() -> None:
-    init_data = _signed_init_data(bot_token="123:token", user_id=987)
+    init_data = _signed_init_data(bot_token="123:token", user_id=987, auth_date=1710000000)
 
-    assert validate_telegram_init_data(init_data, bot_token="123:token") == 987
+    assert validate_telegram_init_data(
+        init_data,
+        bot_token="123:token",
+        now=1710000100,
+    ) == 987
+
+
+def test_telegram_init_data_validation_rejects_replay() -> None:
+    init_data = _signed_init_data(bot_token="123:token", user_id=987, auth_date=1710000000)
+
+    with pytest.raises(web.HTTPUnauthorized) as exc_info:
+        validate_telegram_init_data(
+            init_data,
+            bot_token="123:token",
+            now=1710003601,
+        )
+    assert "expired" in exc_info.value.text
+
+
+def test_mini_app_signed_user_requires_access_approval(tmp_path) -> None:
+    settings = Settings(
+        bot_token="123:token",
+        obsidian_vault_path=str(tmp_path),
+        assistant_access_mode="pairing",
+    )
+    user_id = 987
+    request = _mini_app_request(
+        settings,
+        headers={
+            "X-Telegram-Init-Data": _signed_init_data(
+                bot_token="123:token",
+                user_id=user_id,
+                auth_date=int(time.time()),
+            )
+        },
+    )
+
+    with pytest.raises(web.HTTPForbidden) as exc_info:
+        _user_id_from_request(request)
+    assert "not approved" in exc_info.value.text
+
+    AccessControlStore(str(tmp_path)).allow_user(user_id)
+
+    assert _user_id_from_request(request) == user_id
+
+
+def test_mini_app_dev_auth_requires_opt_in_and_loopback(tmp_path) -> None:
+    disabled = Settings(
+        env="local",
+        obsidian_vault_path=str(tmp_path),
+        mini_app_dev_auth_enabled=False,
+    )
+    enabled = Settings(
+        env="local",
+        obsidian_vault_path=str(tmp_path),
+        mini_app_dev_auth_enabled=True,
+    )
+
+    with pytest.raises(web.HTTPUnauthorized):
+        _user_id_from_request(_mini_app_request(disabled, query={"user_id": "123"}))
+    with pytest.raises(web.HTTPUnauthorized):
+        _user_id_from_request(
+            _mini_app_request(enabled, query={"user_id": "123"}, remote="192.0.2.1")
+        )
+
+    assert _user_id_from_request(_mini_app_request(enabled, query={"user_id": "123"})) == 123
+
+
+def test_mini_app_cors_and_body_limit_are_restricted() -> None:
+    settings = Settings(tg_mini_app_url="https://mini.example/app")
+
+    assert _cors_origin(
+        _mini_app_request(settings, headers={"Origin": "https://mini.example"})
+    ) == "https://mini.example"
+    assert _cors_origin(
+        _mini_app_request(settings, headers={"Origin": "https://attacker.example"})
+    ) is None
+    assert create_mini_app_web_app(settings)._client_max_size == MAX_RAW_PAYLOAD_BYTES
+
+
+def test_mini_app_rate_limiter_resets_after_window() -> None:
+    limiter = MiniAppRateLimiter(2, window_seconds=60)
+
+    assert limiter.consume("user", now=0) is None
+    assert limiter.consume("user", now=1) is None
+    assert limiter.consume("user", now=2) == 58
+    assert limiter.consume("user", now=60) is None
 
 
 def test_conversation_summary_and_mini_app_manifest() -> None:
@@ -347,9 +475,9 @@ def test_mini_app_payload_rejects_oversized_text() -> None:
         parse_mini_app_payload('{"type":"source_add","source_type":"mail","target":"x"}')
 
 
-def _signed_init_data(*, bot_token: str, user_id: int) -> str:
+def _signed_init_data(*, bot_token: str, user_id: int, auth_date: int) -> str:
     pairs = {
-        "auth_date": "1710000000",
+        "auth_date": str(auth_date),
         "query_id": "q",
         "user": json.dumps({"id": user_id}, separators=(",", ":")),
     }
@@ -361,3 +489,18 @@ def _signed_init_data(*, bot_token: str, user_id: int) -> str:
         hashlib.sha256,
     ).hexdigest()
     return urlencode(pairs)
+
+
+def _mini_app_request(
+    settings: Settings,
+    *,
+    headers: dict[str, str] | None = None,
+    query: dict[str, str] | None = None,
+    remote: str = "127.0.0.1",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        app={SETTINGS_KEY: settings},
+        headers=headers or {},
+        query=query or {},
+        remote=remote,
+    )

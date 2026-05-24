@@ -104,7 +104,7 @@ class SpendingStore:
         return receipts[:limit]
 
     def set_budget(self, *, user_id: int, month: str, amount: Decimal) -> None:
-        if amount <= 0:
+        if not amount.is_finite() or amount <= 0:
             raise ValueError("budget must be positive")
         budgets = self._read_budgets(user_id)
         budgets[month] = str(amount)

@@ -282,9 +282,12 @@ class FinanceStore:
 
 def parse_amount(value: str) -> Decimal:
     try:
-        return Decimal(value.replace(",", "."))
+        amount = Decimal(value.replace(",", "."))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError("amount must be a number") from exc
+    if not amount.is_finite():
+        raise ValueError("amount must be finite")
+    return amount
 
 
 def parse_transaction_request(text: str) -> tuple[Decimal, str, str]:

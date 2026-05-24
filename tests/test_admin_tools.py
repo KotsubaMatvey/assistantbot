@@ -4,13 +4,16 @@ import zipfile
 
 from app.services.admin_tools import (
     check_access_control,
+    check_backup_gitignore,
     check_docker_compose,
     check_memory_index,
+    check_mini_app_dev_auth,
     check_pairing_first,
     check_secret_files,
     check_vault,
     check_vault_gitignore,
     create_backup,
+    restore_backup,
 )
 
 
@@ -34,11 +37,17 @@ def test_check_secret_files_requires_env_in_gitignore(tmp_path) -> None:
 
 
 def test_security_audit_checks_pairing_and_vault_gitignore(tmp_path) -> None:
-    (tmp_path / ".gitignore").write_text(".env\nassistantbotmemory/\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text(
+        ".env\nassistantbotmemory/\nbackups/\n",
+        encoding="utf-8",
+    )
 
     assert check_pairing_first("pairing").ok is True
     assert check_pairing_first("open").ok is False
     assert check_vault_gitignore(str(tmp_path)).ok is True
+    assert check_backup_gitignore(str(tmp_path)).ok is True
+    assert check_mini_app_dev_auth(False).ok is True
+    assert check_mini_app_dev_auth(True).ok is False
 
 
 def test_check_docker_compose_reports_restart_policy(tmp_path) -> None:
@@ -60,10 +69,46 @@ def test_create_backup_includes_memory_and_safe_project_files(tmp_path) -> None:
     (tmp_path / "README.md").write_text("readme", encoding="utf-8")
     (tmp_path / ".env").write_text("BOT_TOKEN=secret", encoding="utf-8")
 
-    result = create_backup(repo_root=str(tmp_path), vault_path=str(vault))
+    result = create_backup(
+        repo_root=str(tmp_path),
+        vault_path=str(vault),
+        database_dump=b"postgres dump",
+    )
 
     with zipfile.ZipFile(result.path) as archive:
         names = set(archive.namelist())
+        dump = archive.read("database/postgres.dump")
     assert "assistantbotmemory/note.md" in names
     assert "project/README.md" in names
+    assert dump == b"postgres dump"
     assert ".env" not in names
+
+
+def test_restore_backup_validates_then_applies_vault_and_database_dump(tmp_path) -> None:
+    source_vault = tmp_path / "source-memory"
+    source_vault.mkdir()
+    (source_vault / "note.md").write_text("restored", encoding="utf-8")
+    archive = create_backup(
+        repo_root=str(tmp_path),
+        vault_path=str(source_vault),
+        database_dump=b"postgres dump",
+    ).path
+    target_vault = tmp_path / "target-memory"
+    target_vault.mkdir()
+    (target_vault / "old.md").write_text("old", encoding="utf-8")
+
+    checked = restore_backup(archive_path=str(archive), vault_path=str(target_vault))
+    restored_dumps: list[bytes] = []
+    restored = restore_backup(
+        archive_path=str(archive),
+        vault_path=str(target_vault),
+        apply=True,
+        database_restorer=lambda path: restored_dumps.append(path.read_bytes()),
+    )
+
+    assert checked.database_included is True
+    assert checked.vault_files == 1
+    assert restored_dumps == [b"postgres dump"]
+    assert (target_vault / "note.md").read_text(encoding="utf-8") == "restored"
+    assert restored.previous_vault_path is not None
+    assert (restored.previous_vault_path / "old.md").exists()

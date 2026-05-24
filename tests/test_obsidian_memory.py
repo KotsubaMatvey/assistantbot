@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -69,6 +70,24 @@ def test_search_user_notes_keeps_exact_match_above_semantic_match(tmp_path) -> N
     results = memory.search_user_notes(user_id=123, query="паспорт")
 
     assert results[0].snippet == "Паспорт лежит в синей папке."
+
+
+def test_search_rebuilds_missing_local_vector_index(tmp_path) -> None:
+    memory = ObsidianMemory(str(tmp_path))
+    memory.remember_user_note(user_id=123, text="Alpha vector memory note.")
+
+    assert memory.search_user_notes(user_id=123, query="alpha vector")
+    index_path = tmp_path / ".assistantbot" / "memory-index.sqlite3"
+    with sqlite3.connect(index_path) as connection:
+        assert connection.execute("select count(*) from memory_vectors").fetchone()[0] >= 1
+        connection.execute("drop table memory_vectors")
+
+    results = memory.search_user_notes(user_id=123, query="alpha vector")
+
+    assert results
+    assert "Alpha vector memory note" in results[0].snippet
+    with sqlite3.connect(index_path) as connection:
+        assert connection.execute("select count(*) from memory_vectors").fetchone()[0] >= 1
 
 
 def test_ask_user_memory_answers_from_matching_notes(tmp_path) -> None:

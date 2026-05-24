@@ -9,6 +9,7 @@ node_modules/
 .npm-cache/
 .env
 assistantbotmemory/
+backups/
 logs/
 .coverage
 htmlcov/
@@ -17,3 +18,5 @@ build/
 *.egg-info/
 playwright-report/
 test-results/
+
+.vercel

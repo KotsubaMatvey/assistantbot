@@ -38,6 +38,8 @@ Second brain memory:
 
 - normal text capture without a command;
 - `/capture <text>` and `/remember <text>` for explicit capture;
+- `/export_memory` sends the user's memory ZIP in Telegram; upload a ZIP with
+  caption `/import_memory` to validate it or `/import_memory --apply` to import;
 - `/memory <query>`, `/ask <question>`, `/context <topic>` for retrieval;
 - `/today`, `/recent`, `/collections`, `/collection`, `/sources`;
 - `/memory_tree`, `/memory_rebuild_tree`, `/memory_profile`,
@@ -86,13 +88,16 @@ It is backed by a local API:
 - Markets tab refreshes market data through the backend API;
 - Shopping tab still sends basket comparison payloads to the bot.
 
-Mini App API requests verify Telegram `initData`. In local development, `ENV=local`
-also allows a dev `user_id` query/header for preview.
+Mini App API requests verify fresh Telegram `initData` and enforce the bot
+allowlist. In local development only, explicitly set
+`MINI_APP_DEV_AUTH_ENABLED=true` to allow a loopback dev `user_id` query/header
+for preview. API mutation/read routes are rate-limited per Mini App session in
+the backend process.
 
 Local Mini App development:
 
 ```bash
-python -m app.scripts.serve_mini_app_api
+ENV=local MINI_APP_DEV_AUTH_ENABLED=true TG_MINI_APP_URL=http://127.0.0.1:5173 python -m app.scripts.serve_mini_app_api
 cd miniapp
 npm install
 VITE_MINI_APP_API_BASE_URL=http://127.0.0.1:8080 VITE_MINI_APP_DEV_USER_ID=123 npm run dev
@@ -107,6 +112,16 @@ npm run build --prefix miniapp
 Vercel deploy is expected to build `miniapp/` and publish `miniapp/dist`.
 Use either a Vercel project with root directory `miniapp`, or the repository
 root config in `vercel.json`.
+
+For a self-hosted production deployment, `Caddyfile` serves `miniapp/dist`,
+proxies `/api/*` to the bot service, and obtains HTTPS certificates:
+
+```bash
+npm run build --prefix miniapp
+MINI_APP_DOMAIN=assistant.example.com docker compose --profile production up --build -d
+```
+
+Set `TG_MINI_APP_URL=https://assistant.example.com/` for that deployment.
 
 ## Local Backend Setup
 
@@ -154,6 +169,12 @@ Compose starts:
 - `redis`
 - `bot`
 
+PostgreSQL, Redis and the direct Mini App API host port bind to `127.0.0.1`
+only. `POSTGRES_PASSWORD` and `DATABASE_URL` are required by Compose; replace
+the example password before first startup and URL-encode special characters in
+`DATABASE_URL`. Publish the Mini App through the HTTPS `gateway` profile
+instead of exposing these ports.
+
 The `bot` service is self-contained: it runs `alembic upgrade head`, then
 `python -m app.scripts.seed_stores`, then starts polling.
 
@@ -167,14 +188,21 @@ Core environment:
 
 ```env
 BOT_TOKEN=
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/pricebot
+POSTGRES_PASSWORD=replace-with-a-long-random-password
+DATABASE_URL=postgresql+asyncpg://postgres:replace-with-a-long-random-password@postgres:5432/pricebot
 REDIS_URL=redis://redis:6379/0
 ENV=local
 CITY=Бор
 TIMEZONE=Europe/Moscow
 OBSIDIAN_VAULT_PATH=assistantbotmemory
 TG_MINI_APP_URL=https://assistantbot-olive.vercel.app/
+MINI_APP_DEV_AUTH_ENABLED=false
+MINI_APP_INIT_DATA_MAX_AGE_SECONDS=3600
+MINI_APP_RATE_LIMIT_PER_MINUTE=120
+MINI_APP_DOMAIN=assistant.example.com
 ADMIN_TELEGRAM_IDS=[]
+ADMIN_BACKUP_ENABLED=false
+ADMIN_BACKUP_INTERVAL_HOURS=24
 ```
 
 Assistant security:
@@ -338,6 +366,26 @@ Admin commands require a Telegram ID from `ADMIN_TELEGRAM_IDS`:
 - `/llm_reset [provider]`
 - `/llm_test [prompt]`
 
+`/admin_backup` creates a ZIP containing the local memory vault and a PostgreSQL
+dump, then sends it to the administrator for secure off-host storage. The ZIP
+contains private data and must not be posted to a shared chat. Restore is a
+local administrative operation and is dry-run by default:
+
+```bash
+python -m app.scripts.restore_backup backups/assistantbot-backup-YYYYMMDD-HHMMSS.zip
+python -m app.scripts.restore_backup backups/assistantbot-backup-YYYYMMDD-HHMMSS.zip --apply
+```
+
+On apply, the former vault is retained beside the restored one as
+`assistantbotmemory.pre-restore-*`. Take a current backup before applying a
+restore because `pg_restore` replaces database contents. For a Docker
+deployment, stop `bot` before apply and run restore from the host against the
+localhost PostgreSQL port; the vault bind-mount must not be replaced from
+inside the running container. The host must have `pg_restore` installed.
+Set `ADMIN_BACKUP_ENABLED=true` only after defining `ADMIN_TELEGRAM_IDS`; the
+scheduler will then send the same full backup to the listed administrators
+every `ADMIN_BACKUP_INTERVAL_HOURS`.
+
 ## Tests And Quality
 
 ```bash
@@ -354,18 +402,20 @@ marked with `@pytest.mark.integration`.
 Backend:
 
 1. Set `.env`.
-2. Run `docker compose up --build -d`.
-3. Check `docker compose logs --tail=100 bot`.
-4. Confirm Alembic head with `docker compose exec -T bot alembic current`.
+2. Set `MINI_APP_DOMAIN` and `TG_MINI_APP_URL=https://<domain>/`.
+3. Run `docker compose --profile production up --build -d`.
+4. Check `curl https://<domain>/api/health` and configure external uptime monitoring for it.
+5. Check `docker compose logs --tail=100 bot gateway`.
+6. Confirm Alembic head with `docker compose exec -T bot alembic current`.
+7. Run `/admin_backup`, keep the received archive off-host, and validate it with the restore CLI.
+8. Enable `ADMIN_BACKUP_ENABLED=true` after downloading and validating the manual backup.
 
 Mini App:
 
 1. Build `miniapp/`.
-2. Serve `miniapp/dist` from the bot API or mount it in Docker.
-3. Put HTTPS in front of `MINI_APP_API_PORT`.
-4. Set `TG_MINI_APP_URL` to that HTTPS URL.
-5. Restart bot so `set_chat_menu_button` points Telegram to the current URL.
-6. Verify with `Bot.get_chat_menu_button()`.
+2. Let the production `gateway` serve `miniapp/dist` over HTTPS.
+3. Restart bot so `set_chat_menu_button` points Telegram to the current URL.
+4. Verify with `Bot.get_chat_menu_button()`.
 
 ## Roadmap
 
@@ -373,5 +423,4 @@ Mini App:
 - richer agenda and task triage;
 - better compaction summaries and automatic memory flush;
 - optional LLM-backed answers with explicit capability flags;
-- production deployment docs for Vercel and Docker;
 - shopping skill hardening as a secondary module.

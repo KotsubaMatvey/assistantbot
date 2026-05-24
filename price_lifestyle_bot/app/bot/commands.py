@@ -27,7 +27,7 @@ class CommandDef:
 COMMAND_REGISTRY: tuple[CommandDef, ...] = (
     CommandDef("agenda", "показать задачи, напоминания, jobs и важное", "Память"),
     CommandDef("export_memory", "экспортировать память пользователя", "Память"),
-    CommandDef("import_memory", "импортировать память из zip", "Память", "[--apply] <zip_path>"),
+    CommandDef("import_memory", "импортировать прикреплённый zip", "Память", "[--apply]"),
     CommandDef("orders", "показать standing orders", "Память"),
     CommandDef("order_add", "добавить standing order", "Память", "<text>"),
     CommandDef("order_delete", "удалить standing order", "Память", "<id>"),

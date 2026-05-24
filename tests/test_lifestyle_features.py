@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
 from app.db.models import PriceType
 from app.services.assistant_jobs import AssistantJobStore
 from app.services.assistant_personas import format_personas, get_persona
@@ -11,7 +12,7 @@ from app.services.automation import enable_automation, list_automation_templates
 from app.services.basket_parser import parse_basket
 from app.services.daily_brief import DailyBrief, format_daily_brief
 from app.services.family import FamilyStore
-from app.services.finance import FinanceStore
+from app.services.finance import FinanceStore, parse_amount
 from app.services.pantry import PantryStore, parse_pantry_item
 from app.services.price_alerts import (
     CONDITION_BELOW_AVERAGE,
@@ -114,6 +115,21 @@ def test_finance_store_cashflow_accounts_and_subscriptions(tmp_path) -> None:
     assert summary.income == Decimal("5000")
     assert summary.expenses == Decimal("1000")
     assert summary.forecast == Decimal("13201")
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_finance_rejects_non_finite_amounts(value: str) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        parse_amount(value)
+
+
+def test_budget_rejects_non_finite_amount(tmp_path) -> None:
+    with pytest.raises(ValueError, match="positive"):
+        SpendingStore(str(tmp_path)).set_budget(
+            user_id=123,
+            month="2026-05",
+            amount=Decimal("NaN"),
+        )
 
 
 def test_price_alerts_evaluate_current_offers(tmp_path) -> None:

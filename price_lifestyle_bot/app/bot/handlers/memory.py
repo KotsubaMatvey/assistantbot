@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import secrets
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import (
+    FSInputFile,
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
@@ -37,7 +41,11 @@ from app.services.knowledge_ingestion import (
     list_rss_subscriptions,
 )
 from app.services.llm_client import answer_question_with_llm
-from app.services.memory_transfer import export_user_memory, import_user_memory
+from app.services.memory_transfer import (
+    MAX_IMPORT_ARCHIVE_BYTES,
+    export_user_memory,
+    import_user_memory,
+)
 from app.services.memory_tree import MemoryTreeStore, format_build_result
 from app.services.mini_app import format_mini_app_status, mini_app_manifest
 from app.services.object_store import (
@@ -289,39 +297,77 @@ async def agenda_handler(message: Message) -> None:
 async def export_memory_handler(message: Message) -> None:
     if message.from_user is None:
         return
-    result = export_user_memory(
+    result = await asyncio.to_thread(
+        export_user_memory,
         vault_path=get_settings().obsidian_vault_path,
         user_id=message.from_user.id,
     )
     _audit(message.from_user.id, "export_memory", str(result.path))
-    await message.answer(f"Export готов: {result.path}\nФайлов: {result.files_count}")
+    try:
+        await message.answer_document(
+            FSInputFile(result.path),
+            caption=f"Экспорт памяти. Храни архив безопасно. Файлов: {result.files_count}",
+        )
+    finally:
+        await asyncio.to_thread(result.path.unlink, missing_ok=True)
 
 
 @router.message(Command("import_memory"))
+@router.message(F.document, F.caption.regexp(r"^/import_memory(?:@\w+)?(?:\s|$)"))
 async def import_memory_handler(message: Message) -> None:
     if message.from_user is None:
         return
-    args = (message.text or "").partition(" ")[2].strip()
-    if not args:
-        await message.answer("Использование: /import_memory [--apply] <zip_path>")
+    args = (message.caption or message.text or "").partition(" ")[2].strip()
+    if args not in {"", "--apply"}:
+        await message.answer("Использование: отправь ZIP с подписью /import_memory [--apply]")
         return
-    dry_run = True
-    if args.startswith("--apply "):
-        dry_run = False
-        args = args.partition(" ")[2].strip()
+    if message.document is None:
+        await message.answer("Прикрепи ZIP-файл с подписью /import_memory [--apply].")
+        return
+    if message.document.file_size and message.document.file_size > MAX_IMPORT_ARCHIVE_BYTES:
+        await message.answer("Архив слишком большой для импорта.")
+        return
+    file_name = (message.document.file_name or "").lower()
+    if file_name and not file_name.endswith(".zip"):
+        await message.answer("Для импорта нужен ZIP-файл.")
+        return
+    dry_run = args != "--apply"
+    settings = get_settings()
+    archive = await asyncio.to_thread(
+        _temporary_memory_import_path, settings.obsidian_vault_path, message.from_user.id
+    )
+    bot = message.bot
+    if bot is None:
+        await message.answer("Импорт недоступен: Telegram client не инициализирован.")
+        return
     try:
-        result = import_user_memory(
-            vault_path=get_settings().obsidian_vault_path,
+        await bot.download(message.document, destination=archive)
+        result = await asyncio.to_thread(
+            import_user_memory,
+            vault_path=settings.obsidian_vault_path,
             user_id=message.from_user.id,
-            archive_path=args,
+            archive_path=str(archive),
             dry_run=dry_run,
         )
-    except FileNotFoundError:
-        await message.answer("Архив не найден.")
+    except (FileNotFoundError, ValueError) as exc:
+        await message.answer(f"Импорт отклонён: {exc}")
         return
-    _audit(message.from_user.id, "import_memory", f"dry_run={dry_run} {args}")
+    finally:
+        await asyncio.to_thread(archive.unlink, missing_ok=True)
+    if not dry_run:
+        await asyncio.to_thread(
+            ObsidianMemory(settings.obsidian_vault_path).rebuild_user_index,
+            user_id=message.from_user.id,
+        )
+    _audit(message.from_user.id, "import_memory", f"dry_run={dry_run} uploaded_zip")
     mode = "Dry-run" if dry_run else "Import"
     await message.answer(f"{mode}: {result.files_count} файлов.")
+
+
+def _temporary_memory_import_path(vault_path: str, user_id: int) -> Path:
+    temp_dir = Path(vault_path).expanduser() / ".assistantbot" / "imports"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir / f"import-{user_id}-{secrets.token_hex(8)}.zip"
 
 
 @router.message(Command("orders"))
