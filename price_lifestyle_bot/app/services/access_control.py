@@ -30,6 +30,8 @@ class AccessControlStore:
     ) -> bool:
         if mode == "open":
             return True
+        if mode == "admin_only":
+            return user_id in admin_ids
         if user_id in admin_ids:
             return True
         return user_id in self.allowed_users()

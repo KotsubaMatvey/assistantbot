@@ -203,6 +203,13 @@ async def admin_backup(message: Message) -> None:
             f"Файлов: {result.files_count}"
         ),
     )
+    from app.services.audit_log import AuditLogStore
+
+    AuditLogStore(settings.obsidian_vault_path).record(
+        user_id=message.from_user.id if message.from_user else 0,
+        action="admin_backup",
+        detail=f"files={result.files_count}",
+    )
 
 
 @router.message(Command("admin_deploy_check"))

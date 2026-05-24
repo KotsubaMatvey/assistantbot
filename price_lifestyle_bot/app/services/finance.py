@@ -112,6 +112,77 @@ class FinanceStore:
         transactions.sort(key=lambda item: item.created_at, reverse=True)
         return transactions[:limit]
 
+    def delete_transaction(self, *, user_id: int, transaction_id: str) -> bool:
+        transactions = self.list_transactions(user_id=user_id, limit=10_000)
+        remaining = [item for item in transactions if item.id != transaction_id]
+        if len(remaining) == len(transactions):
+            return False
+        self._write_transactions(user_id=user_id, transactions=remaining)
+        return True
+
+    def update_transaction_category(
+        self,
+        *,
+        user_id: int,
+        transaction_id: str,
+        category: str,
+    ) -> FinanceTransaction | None:
+        clean_category = category.strip()
+        if not clean_category:
+            raise ValueError("category is empty")
+        transactions = self.list_transactions(user_id=user_id, limit=10_000)
+        updated: FinanceTransaction | None = None
+        changed: list[FinanceTransaction] = []
+        for transaction in transactions:
+            if transaction.id == transaction_id:
+                updated = FinanceTransaction(
+                    id=transaction.id,
+                    user_id=transaction.user_id,
+                    kind=transaction.kind,
+                    amount=transaction.amount,
+                    category=clean_category,
+                    note=transaction.note,
+                    account=transaction.account,
+                    created_at=transaction.created_at,
+                )
+                changed.append(updated)
+            else:
+                changed.append(transaction)
+        if updated is None:
+            return None
+        self._write_transactions(user_id=user_id, transactions=changed)
+        return updated
+
+    def update_transaction_created_at(
+        self,
+        *,
+        user_id: int,
+        transaction_id: str,
+        created_at: datetime,
+    ) -> FinanceTransaction | None:
+        transactions = self.list_transactions(user_id=user_id, limit=10_000)
+        updated: FinanceTransaction | None = None
+        changed: list[FinanceTransaction] = []
+        for transaction in transactions:
+            if transaction.id == transaction_id:
+                updated = FinanceTransaction(
+                    id=transaction.id,
+                    user_id=transaction.user_id,
+                    kind=transaction.kind,
+                    amount=transaction.amount,
+                    category=transaction.category,
+                    note=transaction.note,
+                    account=transaction.account,
+                    created_at=created_at.astimezone(UTC),
+                )
+                changed.append(updated)
+            else:
+                changed.append(transaction)
+        if updated is None:
+            return None
+        self._write_transactions(user_id=user_id, transactions=changed)
+        return updated
+
     def upsert_account(
         self,
         *,

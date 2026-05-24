@@ -103,6 +103,14 @@ class SpendingStore:
         receipts.sort(key=lambda receipt: receipt.purchased_at, reverse=True)
         return receipts[:limit]
 
+    def delete_receipt(self, *, user_id: int, receipt_id: str) -> bool:
+        receipts = self.list_receipts(user_id=user_id, limit=1000)
+        remaining = [receipt for receipt in receipts if receipt.id != receipt_id]
+        if len(remaining) == len(receipts):
+            return False
+        self._write_receipts(user_id=user_id, receipts=remaining)
+        return True
+
     def set_budget(self, *, user_id: int, month: str, amount: Decimal) -> None:
         if not amount.is_finite() or amount <= 0:
             raise ValueError("budget must be positive")

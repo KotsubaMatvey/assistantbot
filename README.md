@@ -366,6 +366,10 @@ Admin commands require a Telegram ID from `ADMIN_TELEGRAM_IDS`:
 - `/llm_reset [provider]`
 - `/llm_test [prompt]`
 
+Set `ASSISTANT_ACCESS_MODE=admin_only` for a private personal deployment. In
+that mode only IDs listed in `ADMIN_TELEGRAM_IDS` may use either chat actions
+or the Mini App; pairing and the stored allowlist are ignored.
+
 `/admin_backup` creates a ZIP containing the local memory vault and a PostgreSQL
 dump, then sends it to the administrator for secure off-host storage. The ZIP
 contains private data and must not be posted to a shared chat. Restore is a

@@ -82,12 +82,14 @@ async def _refresh_all_prices() -> None:
 
 
 async def _send_due_reminders(bot: Bot) -> None:
+    from app.services.audit_log import AuditLogStore
     from app.services.obsidian_memory import ObsidianMemory
     from app.services.reminder_delivery import ReminderDeliveryStore
 
     settings = get_settings()
     memory = ObsidianMemory(settings.obsidian_vault_path)
     deliveries = ReminderDeliveryStore(settings.obsidian_vault_path)
+    audit = AuditLogStore(settings.obsidian_vault_path)
     for reminder in memory.due_reminders():
         delivery = deliveries.get(user_id=reminder.user_id, reminder_id=reminder.id)
         if delivery is not None and delivery.status == "sent":
@@ -99,11 +101,21 @@ async def _send_due_reminders(bot: Bot) -> None:
             await bot.send_message(reminder.user_id, f"Напоминание:\n{reminder.snippet}")
             deliveries.mark_sent(user_id=reminder.user_id, reminder_id=reminder.id)
             memory.mark_reminder_sent(reminder.path)
+            audit.record(
+                user_id=reminder.user_id,
+                action="reminder_delivered",
+                detail=reminder.id,
+            )
         except Exception as exc:
             deliveries.mark_failed(
                 user_id=reminder.user_id,
                 reminder_id=reminder.id,
                 error=str(exc),
+            )
+            audit.record(
+                user_id=reminder.user_id,
+                action="reminder_delivery_failed",
+                detail=reminder.id,
             )
             logger.exception(
                 "scheduled_reminder_failed",
@@ -140,6 +152,7 @@ async def _send_admin_backup(bot: Bot) -> None:
     from aiogram.types import FSInputFile
 
     from app.services.admin_tools import create_backup, create_postgres_dump, repo_root_from_cwd
+    from app.services.audit_log import AuditLogStore
 
     settings = get_settings()
     if not settings.admin_telegram_ids:
@@ -156,6 +169,7 @@ async def _send_admin_backup(bot: Bot) -> None:
         logger.exception("scheduled_backup_failed", error=str(exc))
         return
     try:
+        audit = AuditLogStore(settings.obsidian_vault_path)
         for admin_id in settings.admin_telegram_ids:
             try:
                 await bot.send_document(
@@ -166,7 +180,17 @@ async def _send_admin_backup(bot: Bot) -> None:
                         f"Files: {result.files_count}"
                     ),
                 )
+                audit.record(
+                    user_id=admin_id,
+                    action="scheduled_backup_delivered",
+                    detail=f"files={result.files_count}",
+                )
             except Exception as exc:
+                audit.record(
+                    user_id=admin_id,
+                    action="scheduled_backup_delivery_failed",
+                    detail=f"files={result.files_count}",
+                )
                 logger.exception(
                     "scheduled_backup_delivery_failed",
                     error=str(exc),

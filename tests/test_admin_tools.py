@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import zipfile
+from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from app.services.admin_tools import (
     check_access_control,
     check_backup_gitignore,
@@ -13,7 +16,9 @@ from app.services.admin_tools import (
     check_vault,
     check_vault_gitignore,
     create_backup,
+    create_postgres_dump,
     restore_backup,
+    restore_postgres_dump,
 )
 
 
@@ -112,3 +117,51 @@ def test_restore_backup_validates_then_applies_vault_and_database_dump(tmp_path)
     assert (target_vault / "note.md").read_text(encoding="utf-8") == "restored"
     assert restored.previous_vault_path is not None
     assert (restored.previous_vault_path / "old.md").exists()
+
+
+def test_postgres_dump_and_restore_fall_back_to_docker_compose(monkeypatch, tmp_path) -> None:
+    calls: list[tuple[list[str], bytes | None]] = []
+
+    def fake_run(command, **kwargs):
+        if command[0] in {"pg_dump", "pg_restore"}:
+            raise FileNotFoundError(command[0])
+        calls.append((command, kwargs.get("input")))
+        return SimpleNamespace(stdout=b"postgres dump")
+
+    monkeypatch.setattr("app.services.admin_tools.subprocess.run", fake_run)
+    database_url = "postgresql+asyncpg://postgres:secret@127.0.0.1:5432/pricebot"
+    dump_path = Path(tmp_path) / "database.dump"
+    dump_path.write_bytes(b"postgres dump")
+
+    assert create_postgres_dump(database_url) == b"postgres dump"
+    restore_postgres_dump(database_url, dump_path)
+
+    assert calls[0][0][:6] == [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "postgres",
+        "pg_dump",
+    ]
+    assert calls[1][0][:6] == [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "postgres",
+        "pg_restore",
+    ]
+    assert calls[1][1] == b"postgres dump"
+
+
+def test_postgres_dump_does_not_use_local_docker_for_external_database(monkeypatch) -> None:
+    def fake_run(command, **kwargs):
+        raise FileNotFoundError(command[0])
+
+    monkeypatch.setattr("app.services.admin_tools.subprocess.run", fake_run)
+
+    with pytest.raises(ValueError, match="external DATABASE_URL"):
+        create_postgres_dump(
+            "postgresql+asyncpg://postgres:secret@database.example.com:5432/pricebot"
+        )

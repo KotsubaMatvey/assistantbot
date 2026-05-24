@@ -1590,11 +1590,3 @@ async def rss_digest_handler(message: Message) -> None:
     memory = ObsidianMemory(settings.obsidian_vault_path)
     memory.remember_user_note(user_id=message.from_user.id, text=format_digest_memory_note(digests))
     await message.answer(text[:3900])
-
-
-@router.message(F.text, ~F.text.startswith("/"))
-async def default_text_capture_handler(message: Message) -> None:
-    text = (message.text or "").strip()
-    if not text:
-        return
-    await _capture_text(message, text)

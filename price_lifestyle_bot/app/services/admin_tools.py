@@ -86,6 +86,8 @@ def security_audit_checks(*, settings: SecuritySettings, repo_root: str) -> list
 def check_pairing_first(mode: str) -> CheckResult:
     if mode == "pairing":
         return CheckResult("DM pairing", True, "mode=pairing")
+    if mode == "admin_only":
+        return CheckResult("DM pairing", True, "mode=admin_only; owner access only")
     if mode == "open":
         return CheckResult("DM pairing", False, "mode=open allows unknown users")
     return CheckResult("DM pairing", True, f"mode={mode}")
@@ -221,29 +223,54 @@ def create_backup(
 
 def create_postgres_dump(database_url: str) -> bytes:
     command, environment = _postgres_command("pg_dump", database_url)
-    result = subprocess.run(
-        [*command, "--format=custom", "--no-owner", "--no-privileges"],
-        check=True,
-        capture_output=True,
-        env=environment,
-    )
+    try:
+        result = subprocess.run(
+            [*command, "--format=custom", "--no-owner", "--no-privileges"],
+            check=True,
+            capture_output=True,
+            env=environment,
+        )
+    except FileNotFoundError:
+        result = subprocess.run(
+            [
+                *_docker_postgres_command("pg_dump", database_url),
+                "--format=custom",
+                "--no-owner",
+                "--no-privileges",
+            ],
+            check=True,
+            capture_output=True,
+        )
     return result.stdout
 
 
 def restore_postgres_dump(database_url: str, dump_path: Path) -> None:
     command, environment = _postgres_command("pg_restore", database_url)
-    subprocess.run(
-        [
-            *command,
-            "--clean",
-            "--if-exists",
-            "--no-owner",
-            "--no-privileges",
-            str(dump_path),
-        ],
-        check=True,
-        env=environment,
-    )
+    try:
+        subprocess.run(
+            [
+                *command,
+                "--clean",
+                "--if-exists",
+                "--no-owner",
+                "--no-privileges",
+                str(dump_path),
+            ],
+            check=True,
+            env=environment,
+        )
+    except FileNotFoundError:
+        subprocess.run(
+            [
+                *_docker_postgres_command("pg_restore", database_url),
+                "--clean",
+                "--if-exists",
+                "--no-owner",
+                "--no-privileges",
+            ],
+            input=dump_path.read_bytes(),
+            check=True,
+        )
 
 
 def restore_backup(
@@ -358,3 +385,18 @@ def _postgres_command(program: str, database_url: str) -> tuple[list[str], dict[
     if url.port:
         command.extend(["--port", str(url.port)])
     return command, environment
+
+
+def _docker_postgres_command(program: str, database_url: str) -> list[str]:
+    url = make_url(database_url)
+    if not url.database:
+        raise ValueError("DATABASE_URL must include a database name")
+    if url.host not in {"127.0.0.1", "localhost", "postgres"}:
+        raise ValueError(
+            "Local Docker PostgreSQL fallback cannot back up an external DATABASE_URL; "
+            "install pg_dump for that database."
+        )
+    command = ["docker", "compose", "exec", "-T", "postgres", program, "--dbname", url.database]
+    if url.username:
+        command.extend(["--username", url.username])
+    return command

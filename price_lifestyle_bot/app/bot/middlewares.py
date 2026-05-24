@@ -114,6 +114,9 @@ class AccessControlMiddleware(BaseMiddleware):
         ):
             return await handler(event, data)
         if message is not None:
+            if mode == "admin_only":
+                await message.answer("Доступ к ассистенту закрыт владельцем.")
+                return None
             pairing = access.create_pairing_code(
                 user_id=user_id,
                 ttl_minutes=settings.assistant_pairing_ttl_minutes,

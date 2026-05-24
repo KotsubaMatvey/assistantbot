@@ -111,6 +111,14 @@ def test_audit_log_skips_corrupted_lines(tmp_path) -> None:
     assert audit.list_events()[0].id == event.id
 
 
+def test_audit_log_filters_events_by_user(tmp_path) -> None:
+    audit = AuditLogStore(str(tmp_path))
+    mine = audit.record(user_id=123, action="mine", detail="visible")
+    audit.record(user_id=456, action="other", detail="hidden")
+
+    assert audit.list_events(user_id=123) == [mine]
+
+
 def test_secret_scanner_redacts_findings(tmp_path) -> None:
     path = tmp_path / "config.txt"
     token = "1234567890:" + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"

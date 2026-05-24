@@ -40,7 +40,7 @@ class AuditLogStore:
             file.write(json.dumps(_event_to_dict(event), ensure_ascii=False) + "\n")
         return event
 
-    def list_events(self, *, limit: int = 20) -> list[AuditEvent]:
+    def list_events(self, *, user_id: int | None = None, limit: int = 20) -> list[AuditEvent]:
         if not self.path.exists():
             return []
         events = []
@@ -51,6 +51,8 @@ class AuditLogStore:
                 events.append(_event_from_dict(json.loads(line)))
             except (KeyError, TypeError, ValueError, json.JSONDecodeError):
                 continue
+        if user_id is not None:
+            events = [event for event in events if event.user_id == user_id]
         events.sort(key=lambda event: event.created_at, reverse=True)
         return events[:limit]
 

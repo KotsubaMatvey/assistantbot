@@ -126,6 +126,14 @@ def test_pairing_code_reuses_active_code(tmp_path) -> None:
     assert second.code == first.code
 
 
+def test_admin_only_access_ignores_pairing_allowlist(tmp_path) -> None:
+    access = AccessControlStore(str(tmp_path))
+    access.allow_user(456)
+
+    assert access.is_allowed(user_id=123, mode="admin_only", admin_ids=[123]) is True
+    assert access.is_allowed(user_id=456, mode="admin_only", admin_ids=[123]) is False
+
+
 def test_runtime_state_tracks_mode_flags_and_session_epoch(tmp_path) -> None:
     runtime = AssistantRuntimeStore(str(tmp_path))
 

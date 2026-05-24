@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from app.services import scheduler
+from app.services.audit_log import AuditLogStore
 from app.services.obsidian_memory import ObsidianMemory
 from app.services.reminder_delivery import ReminderDeliveryStore
 
@@ -98,3 +99,4 @@ async def test_scheduler_sends_reminder_once_and_records_delivery(tmp_path, monk
     assert delivery is not None
     assert delivery.status == "sent"
     assert memory.list_reminders(user_id=123) == []
+    assert AuditLogStore(str(tmp_path)).list_events(user_id=123)[0].action == "reminder_delivered"
