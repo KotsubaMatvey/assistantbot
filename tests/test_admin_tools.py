@@ -20,6 +20,7 @@ from app.services.admin_tools import (
     restore_backup,
     restore_postgres_dump,
 )
+from cryptography.fernet import Fernet
 
 
 def test_check_vault_creates_and_tests_directory(tmp_path) -> None:
@@ -117,6 +118,31 @@ def test_restore_backup_validates_then_applies_vault_and_database_dump(tmp_path)
     assert (target_vault / "note.md").read_text(encoding="utf-8") == "restored"
     assert restored.previous_vault_path is not None
     assert (restored.previous_vault_path / "old.md").exists()
+
+
+def test_encrypted_backup_requires_key_for_restore(tmp_path) -> None:
+    vault = tmp_path / "memory"
+    vault.mkdir()
+    (vault / "note.md").write_text("private", encoding="utf-8")
+    key = Fernet.generate_key().decode()
+    archive = create_backup(
+        repo_root=str(tmp_path),
+        vault_path=str(vault),
+        database_dump=b"postgres dump",
+        encryption_key=key,
+    ).path
+
+    assert archive.name.endswith(".zip.enc")
+    assert not archive.with_suffix("").exists()
+    with pytest.raises(ValueError, match="ENCRYPTION_KEY"):
+        restore_backup(archive_path=str(archive), vault_path=str(vault))
+    checked = restore_backup(
+        archive_path=str(archive),
+        vault_path=str(vault),
+        encryption_key=key,
+    )
+
+    assert checked.database_included is True
 
 
 def test_postgres_dump_and_restore_fall_back_to_docker_compose(monkeypatch, tmp_path) -> None:

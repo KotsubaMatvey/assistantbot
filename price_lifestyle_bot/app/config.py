@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     llm_ovh_model: str = "Meta-Llama-3_1-8B-Instruct"
     llm_siliconflow_api_key: str = ""
     llm_siliconflow_model: str = "Qwen/Qwen3-8B"
+    media_enabled: bool = False
+    media_api_base_url: str = "https://openrouter.ai/api/v1"
+    media_api_key: str = ""
+    media_stt_model: str = "openai/whisper-large-v3"
+    media_vision_model: str = ""
+    media_max_file_bytes: int = Field(default=10_000_000, ge=100_000, le=25_000_000)
     tg_mini_app_url: str = ""
     mini_app_api_enabled: bool = True
     mini_app_api_host: str = "0.0.0.0"
@@ -97,6 +103,7 @@ class Settings(BaseSettings):
     mini_app_rate_limit_per_minute: int = Field(default=120, ge=10, le=10000)
     admin_backup_enabled: bool = False
     admin_backup_interval_hours: int = Field(default=24, ge=1, le=168)
+    admin_backup_encryption_key: str = ""
     bot_enabled_features: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["all"]
     )
@@ -225,6 +232,14 @@ class Settings(BaseSettings):
                 "llm_siliconflow_model": os.getenv(
                     "LLM_SILICONFLOW_MODEL", "Qwen/Qwen3-8B"
                 ),
+                "media_enabled": os.getenv("MEDIA_ENABLED", "false").lower() == "true",
+                "media_api_base_url": os.getenv(
+                    "MEDIA_API_BASE_URL", "https://openrouter.ai/api/v1"
+                ),
+                "media_api_key": os.getenv("MEDIA_API_KEY", ""),
+                "media_stt_model": os.getenv("MEDIA_STT_MODEL", "openai/whisper-large-v3"),
+                "media_vision_model": os.getenv("MEDIA_VISION_MODEL", ""),
+                "media_max_file_bytes": int(os.getenv("MEDIA_MAX_FILE_BYTES", "10000000")),
                 "tg_mini_app_url": os.getenv("TG_MINI_APP_URL", ""),
                 "mini_app_api_enabled": (
                     os.getenv("MINI_APP_API_ENABLED", "true").lower() == "true"
@@ -246,6 +261,7 @@ class Settings(BaseSettings):
                 "admin_backup_interval_hours": int(
                     os.getenv("ADMIN_BACKUP_INTERVAL_HOURS", "24")
                 ),
+                "admin_backup_encryption_key": os.getenv("ADMIN_BACKUP_ENCRYPTION_KEY", ""),
                 "bot_enabled_features": _parse_feature_names(
                     os.getenv("BOT_ENABLED_FEATURES", "all")
                 ),

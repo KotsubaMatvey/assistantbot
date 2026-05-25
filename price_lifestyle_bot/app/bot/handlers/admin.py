@@ -192,6 +192,7 @@ async def admin_backup(message: Message) -> None:
             repo_root=repo_root_from_cwd(),
             vault_path=settings.obsidian_vault_path,
             database_dump=database_dump,
+            encryption_key=settings.admin_backup_encryption_key,
         )
     except (OSError, subprocess.CalledProcessError, ValueError) as exc:
         await message.answer(f"Backup не создан: {exc}")

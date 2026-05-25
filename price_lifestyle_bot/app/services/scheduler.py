@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -11,8 +12,10 @@ from app.logging_config import get_logger
 
 if TYPE_CHECKING:
     from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup
 
     from app.services.assistant_jobs import AssistantJob
+    from app.services.chat_dialogue import ChatButton
     from app.services.obsidian_memory import ObsidianMemory
 
 logger = get_logger(__name__)
@@ -83,11 +86,16 @@ async def _refresh_all_prices() -> None:
 
 async def _send_due_reminders(bot: Bot) -> None:
     from app.services.audit_log import AuditLogStore
+    from app.services.chat_dialogue import ChatDialogueEngine
     from app.services.obsidian_memory import ObsidianMemory
     from app.services.reminder_delivery import ReminderDeliveryStore
 
     settings = get_settings()
     memory = ObsidianMemory(settings.obsidian_vault_path)
+    dialogue = ChatDialogueEngine(
+        settings.obsidian_vault_path,
+        timezone_name=getattr(settings, "timezone", "Europe/Moscow"),
+    )
     deliveries = ReminderDeliveryStore(settings.obsidian_vault_path)
     audit = AuditLogStore(settings.obsidian_vault_path)
     for reminder in memory.due_reminders():
@@ -98,7 +106,16 @@ async def _send_due_reminders(bot: Bot) -> None:
         if not deliveries.claim(user_id=reminder.user_id, reminder_id=reminder.id):
             continue
         try:
-            await bot.send_message(reminder.user_id, f"Напоминание:\n{reminder.snippet}")
+            reply = dialogue.delivered_reminder_reply(
+                user_id=reminder.user_id,
+                reminder_id=reminder.id,
+                body=reminder.snippet,
+            )
+            await bot.send_message(
+                reminder.user_id,
+                f"Напоминание:\n{reminder.snippet}",
+                reply_markup=_chat_markup(reply.rows),
+            )
             deliveries.mark_sent(user_id=reminder.user_id, reminder_id=reminder.id)
             memory.mark_reminder_sent(reminder.path)
             audit.record(
@@ -136,7 +153,14 @@ async def _send_due_jobs(bot: Bot) -> None:
         try:
             output = await _job_output(job, memory=memory)
             if output:
-                await bot.send_message(job.user_id, output[:3900])
+                if job.delivery_mode in {"morning", "evening"}:
+                    await bot.send_message(
+                        job.user_id,
+                        output[:3900],
+                        reply_markup=_daily_markup(),
+                    )
+                else:
+                    await bot.send_message(job.user_id, output[:3900])
             jobs.record_run(job=job, ok=True, detail=_job_run_detail(job, output))
         except Exception as exc:
             jobs.record_run(job=job, ok=False, detail=str(exc))
@@ -164,6 +188,7 @@ async def _send_admin_backup(bot: Bot) -> None:
             repo_root=repo_root_from_cwd(),
             vault_path=settings.obsidian_vault_path,
             database_dump=database_dump,
+            encryption_key=settings.admin_backup_encryption_key,
         )
     except Exception as exc:
         logger.exception("scheduled_backup_failed", error=str(exc))
@@ -249,6 +274,8 @@ async def _job_output(job: AssistantJob, *, memory: ObsidianMemory) -> str:
         return await _price_alert_output(user_id=user_id)
     if delivery_mode == "morning":
         return await _morning_output(user_id=user_id, memory=memory)
+    if delivery_mode == "evening":
+        return _evening_output(user_id=user_id, memory=memory)
     return f"Запланированная задача:\n{message}"
 
 
@@ -334,3 +361,54 @@ async def _morning_output(*, user_id: int, memory: ObsidianMemory) -> str:
         notes=memory.lifestyle_focus_notes(user_id=user_id),
     )
     return format_daily_brief(brief)
+
+
+def _evening_output(*, user_id: int, memory: ObsidianMemory) -> str:
+    from app.services.spending import SpendingStore, format_budget_summary
+
+    settings = get_settings()
+    tasks = memory.list_open_tasks(user_id=user_id, limit=5)
+    reminders = memory.list_reminders(user_id=user_id, limit=5)
+    timezone = ZoneInfo(settings.timezone)
+    lines = ["Evening review", "", "## Today", memory.today_digest(user_id=user_id)[:900]]
+    lines.extend(["", "## Open tasks"])
+    lines.extend(f"- {task.snippet} ({task.id})" for task in tasks)
+    if not tasks:
+        lines.append("- none")
+    lines.extend(["", "## Reminders"])
+    lines.extend(
+        f"- {item.due_at.astimezone(timezone):%Y-%m-%d %H:%M}: {item.snippet}"
+        for item in reminders
+    )
+    if not reminders:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "## Budget",
+            format_budget_summary(
+                SpendingStore(settings.obsidian_vault_path).budget_summary(user_id=user_id)
+            ),
+        ]
+    )
+    return "\n".join(lines)[:3900]
+
+
+def _chat_markup(rows: tuple[tuple[ChatButton, ...], ...]) -> InlineKeyboardMarkup:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=str(button.text), callback_data=str(button.data))
+                for button in row
+            ]
+            for row in rows
+        ]
+    )
+
+
+def _daily_markup() -> InlineKeyboardMarkup:
+    from app.services.chat_dialogue import daily_actions_keyboard
+
+    return _chat_markup(daily_actions_keyboard())

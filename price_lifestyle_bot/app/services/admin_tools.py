@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.engine import make_url
 
 
@@ -189,6 +190,7 @@ def create_backup(
     vault_path: str,
     backup_dir: str = "backups",
     database_dump: bytes | None = None,
+    encryption_key: str = "",
 ) -> BackupResult:
     root = Path(repo_root)
     vault = Path(vault_path).expanduser()
@@ -196,6 +198,7 @@ def create_backup(
     destination.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     archive = destination / f"assistantbot-backup-{timestamp}.zip"
+    cipher = _backup_cipher(encryption_key) if encryption_key.strip() else None
 
     files_count = 0
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -218,6 +221,11 @@ def create_backup(
             f"database_dump={'included' if database_dump is not None else 'not_included'}\n",
         )
         files_count += 1
+    if cipher is not None:
+        encrypted_archive = archive.with_suffix(f"{archive.suffix}.enc")
+        encrypted_archive.write_bytes(cipher.encrypt(archive.read_bytes()))
+        archive.unlink()
+        archive = encrypted_archive
     return BackupResult(path=archive, files_count=files_count)
 
 
@@ -279,12 +287,47 @@ def restore_backup(
     vault_path: str,
     apply: bool = False,
     database_restorer: Callable[[Path], None] | None = None,
+    encryption_key: str = "",
 ) -> RestoreResult:
     archive = Path(archive_path).expanduser()
-    vault = Path(vault_path).expanduser()
     if not archive.exists():
         raise FileNotFoundError(str(archive))
-    with zipfile.ZipFile(archive) as zf:
+    if archive.suffix == ".enc":
+        if not encryption_key.strip():
+            raise ValueError("ADMIN_BACKUP_ENCRYPTION_KEY is required for encrypted backup")
+        try:
+            decrypted = _backup_cipher(encryption_key).decrypt(archive.read_bytes())
+        except InvalidToken as exc:
+            raise ValueError("Backup encryption key is invalid") from exc
+        with tempfile.TemporaryDirectory() as temporary:
+            decrypted_archive = Path(temporary) / archive.with_suffix("").name
+            decrypted_archive.write_bytes(decrypted)
+            return _restore_zip(
+                archive=archive,
+                zip_archive=decrypted_archive,
+                vault_path=vault_path,
+                apply=apply,
+                database_restorer=database_restorer,
+            )
+    return _restore_zip(
+        archive=archive,
+        zip_archive=archive,
+        vault_path=vault_path,
+        apply=apply,
+        database_restorer=database_restorer,
+    )
+
+
+def _restore_zip(
+    *,
+    archive: Path,
+    zip_archive: Path,
+    vault_path: str,
+    apply: bool,
+    database_restorer: Callable[[Path], None] | None,
+) -> RestoreResult:
+    vault = Path(vault_path).expanduser()
+    with zipfile.ZipFile(zip_archive) as zf:
         names = zf.namelist()
         if any(not _is_safe_zip_member(name) for name in names):
             raise ValueError("Backup archive contains unsafe paths")
@@ -327,6 +370,13 @@ def restore_backup(
                 database_included=True,
                 previous_vault_path=previous_vault,
             )
+
+
+def _backup_cipher(encryption_key: str) -> Fernet:
+    try:
+        return Fernet(encryption_key.strip().encode("ascii"))
+    except (UnicodeEncodeError, ValueError) as exc:
+        raise ValueError("ADMIN_BACKUP_ENCRYPTION_KEY is not a valid Fernet key") from exc
 
 
 def format_checks(checks: list[CheckResult]) -> str:

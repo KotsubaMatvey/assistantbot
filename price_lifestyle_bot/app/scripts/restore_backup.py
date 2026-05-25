@@ -31,6 +31,7 @@ def main() -> None:
         vault_path=settings.obsidian_vault_path,
         apply=args.apply,
         database_restorer=database_restorer,
+        encryption_key=settings.admin_backup_encryption_key,
     )
     mode = "Restored" if args.apply else "Validated"
     print(f"{mode}: {result.vault_files} vault files; database dump present.")

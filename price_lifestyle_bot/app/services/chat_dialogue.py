@@ -9,6 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from app.services.assistant_jobs import AssistantJobStore
 from app.services.audit_log import AuditLogStore
 from app.services.file_io import atomic_write_text
 from app.services.finance import FinanceStore, format_money, parse_amount
@@ -64,6 +65,13 @@ class ShoppingItem:
     id: str
     text: str
     added_at: datetime
+
+
+@dataclass(frozen=True)
+class FactRevision:
+    subject: str
+    value: str
+    updated_at: datetime
 
 
 class ChatDialogueStore:
@@ -292,6 +300,100 @@ class ShoppingListStore:
         return self.vault_path / "users" / str(user_id) / "dialogue" / "shopping-list.json"
 
 
+class FactRevisionStore:
+    def __init__(self, vault_path: str) -> None:
+        self.vault_path = Path(vault_path).expanduser()
+
+    def set(
+        self,
+        *,
+        user_id: int,
+        subject: str,
+        value: str,
+        now: datetime | None = None,
+    ) -> FactRevision:
+        revision = FactRevision(
+            subject=subject.strip(),
+            value=value.strip(),
+            updated_at=(now or datetime.now(UTC)).astimezone(UTC),
+        )
+        existing = [
+            item
+            for item in self.list_revisions(user_id=user_id)
+            if _normalize(item.subject) != _normalize(revision.subject)
+        ]
+        self._write(user_id=user_id, revisions=[revision, *existing])
+        return revision
+
+    def matching(self, *, user_id: int, question: str) -> FactRevision | None:
+        question_terms = _fact_terms(question)
+        for revision in self.list_revisions(user_id=user_id):
+            subject_terms = _fact_terms(revision.subject)
+            if subject_terms and (
+                subject_terms <= question_terms
+                or (len(subject_terms) == 1 and bool(subject_terms & question_terms))
+            ):
+                return revision
+        return None
+
+    def remove_from_note(self, *, user_id: int, text: str) -> None:
+        match = re.match(r"^Актуально:\s*(.+?)\s*=\s*(.+?)[.]?$", text.strip())
+        if match is None:
+            return
+        subject = _normalize(match.group(1))
+        value = _normalize(match.group(2))
+        remaining = [
+            item
+            for item in self.list_revisions(user_id=user_id)
+            if _normalize(item.subject) != subject or _normalize(item.value) != value
+        ]
+        self._write(user_id=user_id, revisions=remaining)
+
+    def list_revisions(self, *, user_id: int) -> list[FactRevision]:
+        path = self._path(user_id)
+        if not path.exists():
+            return []
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        revisions: list[FactRevision] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            try:
+                revisions.append(
+                    FactRevision(
+                        subject=str(item["subject"]),
+                        value=str(item["value"]),
+                        updated_at=datetime.fromisoformat(str(item["updated_at"])).astimezone(UTC),
+                    )
+                )
+            except (KeyError, ValueError):
+                continue
+        return revisions
+
+    def _write(self, *, user_id: int, revisions: list[FactRevision]) -> None:
+        atomic_write_text(
+            self._path(user_id),
+            json.dumps(
+                [
+                    {
+                        "subject": item.subject,
+                        "value": item.value,
+                        "updated_at": item.updated_at.isoformat(),
+                    }
+                    for item in revisions
+                ],
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+
+    def _path(self, user_id: int) -> Path:
+        return self.vault_path / "users" / str(user_id) / "dialogue" / "fact-revisions.json"
+
+
 class ChatDialogueEngine:
     def __init__(self, vault_path: str, *, timezone_name: str = "Europe/Moscow") -> None:
         self.vault_path = vault_path
@@ -301,6 +403,8 @@ class ChatDialogueEngine:
         self.spending = SpendingStore(vault_path)
         self.dialogue = ChatDialogueStore(vault_path)
         self.shopping = ShoppingListStore(vault_path)
+        self.revisions = FactRevisionStore(vault_path)
+        self.jobs = AssistantJobStore(vault_path, timezone_name=timezone_name)
         self.audit = AuditLogStore(vault_path)
 
     def handle_text(
@@ -370,6 +474,26 @@ class ChatDialogueEngine:
             "например:\nмагазин: Магнит\nмолоко 89.90\nхлеб 45"
         )
 
+    def confirm_media_text(
+        self,
+        *,
+        user_id: int,
+        text: str,
+        source: str,
+    ) -> ChatReply:
+        kind = "confirm_voice" if source == "voice" else "confirm_receipt"
+        self.dialogue.pending(user_id=user_id, kind=kind, payload={"text": text})
+        label = "Расшифровал голосовое" if source == "voice" else "Распознал чек"
+        return ChatReply(
+            f"{label}:\n{text}\n\nПодтвердить?",
+            rows=(
+                (
+                    ChatButton("Подтвердить", "chat:apply:pending"),
+                    ChatButton("Отмена", "chat:reject:pending"),
+                ),
+            ),
+        )
+
     def handle_photo_caption(
         self,
         *,
@@ -382,6 +506,34 @@ class ChatDialogueEngine:
         except ValueError:
             return self.handle_text(user_id=user_id, text=caption, now=now)
 
+    def delivered_reminder_reply(
+        self,
+        *,
+        user_id: int,
+        reminder_id: str,
+        body: str,
+        now: datetime | None = None,
+    ) -> ChatReply:
+        action = self.dialogue.remember_action(
+            user_id=user_id,
+            kind="delivered_reminder",
+            ref=reminder_id,
+            label=body,
+            payload={"body": body},
+            now=now,
+        )
+        return ChatReply(
+            "",
+            rows=(
+                (
+                    ChatButton("Готово", f"chat:remdone:{action.id}"),
+                    ChatButton("Через час", f"chat:rempost:{action.id}:60"),
+                    ChatButton("Завтра", f"chat:rempost:{action.id}:1440"),
+                ),
+                (ChatButton("Больше не напоминать", f"chat:remstop:{action.id}"),),
+            ),
+        )
+
     def handle_callback(
         self,
         *,
@@ -393,11 +545,38 @@ class ChatDialogueEngine:
         if len(parts) < 3 or parts[0] != "chat":
             return ChatReply("Действие не распознано.")
         verb, action_id = parts[1], parts[2]
+        if action_id == "pending" and verb in {"apply", "reject"}:
+            state = self.dialogue.state(user_id=user_id)
+            if state.pending is None or state.pending.kind not in {
+                "confirm_voice",
+                "confirm_receipt",
+            }:
+                return ChatReply("Подтверждение уже недоступно.")
+            if verb == "reject":
+                self.dialogue.clear_pending(user_id=user_id)
+                return ChatReply("Отменил распознанное действие.")
+            return self._apply_media_pending(user_id=user_id, pending=state.pending, now=now)
         action = self.dialogue.action(user_id=user_id, action_id=action_id)
         if action is None:
             return ChatReply("Это действие уже недоступно.")
         if verb == "undo":
             return self._undo(user_id=user_id, action=action, now=now)
+        if action.kind == "delivered_reminder" and verb == "remdone":
+            self._audit_change(user_id, "chat_reminder_done", action.label, now=now)
+            return ChatReply("Отметил напоминание выполненным.")
+        if action.kind == "delivered_reminder" and verb == "remstop":
+            self._audit_change(user_id, "chat_reminder_stop", action.label, now=now)
+            return ChatReply("Больше не буду повторять это напоминание.")
+        if action.kind == "delivered_reminder" and verb == "rempost":
+            minutes = int(parts[3]) if len(parts) >= 4 and parts[3].isdigit() else 60
+            due_at = (now or datetime.now(UTC)).astimezone(UTC) + timedelta(minutes=minutes)
+            self._audit_change(user_id, "chat_reminder_postpone", action.label, now=now)
+            return self._save_reminder(
+                user_id=user_id,
+                body=action.payload.get("body", action.label),
+                due_at=due_at,
+                now=now,
+            )
         if verb == "done" and action.kind == "task":
             if self.memory.complete_task(user_id=user_id, task_id=action.ref):
                 self._audit_change(user_id, "chat_task_complete", action.label, now=now)
@@ -465,6 +644,7 @@ class ChatDialogueEngine:
         if verb == "delete" and action.kind in {"note", "preference", "memory_reference"}:
             deleted = self.memory.delete_note(user_id=user_id, note_id=action.ref)
             if deleted:
+                self.revisions.remove_from_note(user_id=user_id, text=action.label)
                 self._audit_change(user_id, "chat_memory_delete", action.label, now=now)
             return ChatReply("Удалил из памяти." if deleted else "Запись уже удалена.")
         if verb == "keep":
@@ -499,6 +679,9 @@ class ChatDialogueEngine:
             "что ты изменил",
         }:
             return self._change_history(user_id=user_id)
+        scheduled_brief = self._set_brief_schedule(user_id=user_id, text=text, now=now)
+        if scheduled_brief is not None:
+            return scheduled_brief
         if normalized in {
             "отмени последнюю запись",
             "отмени последнее действие",
@@ -629,20 +812,35 @@ class ChatDialogueEngine:
             latest = self.dialogue.latest_action(user_id=user_id, kinds={"task"})
             if latest and self.memory.complete_task(user_id=user_id, task_id=latest.ref):
                 return ChatReply("Готово. Задача закрыта.")
-        replacement = re.match(r"^замени\s+(.+?)\s+на\s+(.+)$", text.strip(), flags=re.IGNORECASE)
-        if replacement:
-            return self._save_note(
-                user_id=user_id,
-                text=f"Актуально: {replacement.group(1)} = {replacement.group(2)}",
-                note_type="preference",
-                now=now,
-            )
+            delivered = self.dialogue.latest_action(user_id=user_id, kinds={"delivered_reminder"})
+            if delivered:
+                self._audit_change(user_id, "chat_reminder_done", delivered.label, now=now)
+                return ChatReply("Отметил напоминание выполненным.")
+        if normalized in {"завтра", "напомни завтра", "через час", "больше не напоминай"}:
+            delivered = self.dialogue.latest_action(user_id=user_id, kinds={"delivered_reminder"})
+            if delivered:
+                if normalized == "больше не напоминай":
+                    self._audit_change(user_id, "chat_reminder_stop", delivered.label, now=now)
+                    return ChatReply("Больше не буду повторять это напоминание.")
+                delta = timedelta(hours=1) if normalized == "через час" else timedelta(days=1)
+                return self._save_reminder(
+                    user_id=user_id,
+                    body=delivered.payload.get("body", delivered.label),
+                    due_at=(now or datetime.now(UTC)).astimezone(UTC) + delta,
+                    now=now,
+                )
         correction = re.match(
-            r"^исправь\s+(.+?)\s+на\s+(.+)$",
+            r"^(?:замени|исправь)\s+(.+?)\s+на\s+(.+)$",
             text.strip(),
             flags=re.IGNORECASE,
         )
         if correction:
+            self.revisions.set(
+                user_id=user_id,
+                subject=correction.group(1),
+                value=correction.group(2),
+                now=now,
+            )
             return self._save_note(
                 user_id=user_id,
                 text=f"Актуально: {correction.group(1)} = {correction.group(2)}",
@@ -680,6 +878,10 @@ class ChatDialogueEngine:
         profile: DialogueProfile,
         now: datetime | None,
     ) -> ChatReply | None:
+        if pending.kind in {"confirm_voice", "confirm_receipt"}:
+            if _normalize(text) in {"да", "подтверди", "подтверждаю", "верно"}:
+                return self._apply_media_pending(user_id=user_id, pending=pending, now=now)
+            return ChatReply("Подтверди распознанный текст или напиши «отмена».")
         if pending.kind == "voice_transcript":
             self.dialogue.clear_pending(user_id=user_id)
             reply = self._handle_one(user_id=user_id, text=text, profile=profile, now=now)
@@ -729,6 +931,90 @@ class ChatDialogueEngine:
                 self.memory.delete_note(user_id=user_id, note_id=pending.payload["reminder_id"])
             return self._save_reminder(user_id=user_id, body=body, due_at=due_at, now=now)
         return None
+
+    def _apply_media_pending(
+        self,
+        *,
+        user_id: int,
+        pending: PendingDialogue,
+        now: datetime | None,
+    ) -> ChatReply:
+        text = pending.payload.get("text", "")
+        self.dialogue.clear_pending(user_id=user_id)
+        if pending.kind == "confirm_voice":
+            return self.handle_text(user_id=user_id, text=text, now=now)
+        try:
+            return self._save_receipt(user_id=user_id, text=text, now=now)
+        except ValueError as exc:
+            self.dialogue.pending(user_id=user_id, kind="photo_receipt", payload={})
+            return ChatReply(
+                f"Не удалось сохранить распознанный чек: {exc}\n"
+                "Отправь исправленные строки вида «товар 123.45»."
+            )
+
+    def _set_brief_schedule(
+        self,
+        *,
+        user_id: int,
+        text: str,
+        now: datetime | None,
+    ) -> ChatReply | None:
+        normalized = _normalize(text)
+        stop = re.match(
+            r"^(?:не\s+присылай|отключи)\s+(?P<period>утренн\w+|вечерн\w+)\s+"
+            r"(?:сводк\w+|обзор\w+|итог\w*)$",
+            normalized,
+        )
+        if stop:
+            mode = "morning" if stop.group("period").startswith("утрен") else "evening"
+            removed = self._remove_daily_brief(user_id=user_id, delivery_mode=mode)
+            return ChatReply(
+                "Отключил ежедневную сводку." if removed else "Такая рассылка не включена."
+            )
+        match = re.match(
+            r"^(?:присылай|отправляй)\s+(?:мне\s+)?"
+            r"(?P<period>утренн\w+|вечерн\w+)\s+"
+            r"(?:сводк\w+|обзор\w+|итог\w*)\s+(?:каждый\s+день\s+)?"
+            r"в\s+(?P<clock>\d{1,2}(?::\d{2})?)$",
+            normalized,
+        )
+        if match is None:
+            match = re.match(
+                r"^кажд\w+\s+(?P<period>утр\w*|вечер\w*)\s+"
+                r"в\s+(?P<clock>\d{1,2}(?::\d{2})?)\s+"
+                r"(?:присылай|отправляй|подводи).*$",
+                normalized,
+            )
+        if match is None:
+            return None
+        clock = match.group("clock")
+        if ":" not in clock:
+            clock = f"{clock}:00"
+        mode = "morning" if match.group("period").startswith("утр") else "evening"
+        try:
+            hour, minute = (int(part) for part in clock.split(":"))
+            clock = f"{hour:02d}:{minute:02d}"
+            self._remove_daily_brief(user_id=user_id, delivery_mode=mode)
+            self.jobs.add_job(
+                user_id=user_id,
+                schedule_type="daily",
+                schedule_value=clock,
+                delivery_mode=mode,
+                message=f"{mode} brief",
+                now=now,
+            )
+        except ValueError:
+            return ChatReply("Укажи корректное время, например 08:00 или 20:30.")
+        label = "утреннюю" if mode == "morning" else "вечернюю"
+        self._audit_change(user_id, "chat_brief_schedule", f"{mode} {clock}", now=now)
+        return ChatReply(f"Буду присылать {label} сводку каждый день в {clock}.")
+
+    def _remove_daily_brief(self, *, user_id: int, delivery_mode: str) -> bool:
+        removed = False
+        for job in self.jobs.list_jobs(user_id=user_id):
+            if job.delivery_mode == delivery_mode and job.schedule_type == "daily":
+                removed = self.jobs.delete_job(user_id=user_id, job_id=job.id) or removed
+        return removed
 
     def _set_profile_from_text(
         self,
@@ -935,6 +1221,29 @@ class ChatDialogueEngine:
         concise: bool,
         now: datetime | None,
     ) -> ChatReply:
+        revision = self.revisions.matching(user_id=user_id, question=question)
+        if revision is not None:
+            matching_results = self.memory.search_user_notes(
+                user_id=user_id,
+                query=revision.value,
+                limit=1,
+            )
+            lines = [f"Актуально: {revision.subject} = {revision.value}."]
+            if not matching_results:
+                return ChatReply("\n".join(lines))
+            top = matching_results[0]
+            lines.append(f"Источник: {top.citation}")
+            action = self.dialogue.remember_action(
+                user_id=user_id,
+                kind="memory_reference",
+                ref=top.path.stem,
+                label=top.snippet,
+                now=now,
+            )
+            return ChatReply(
+                "\n".join(lines),
+                rows=((ChatButton("Забыть найденное", f"chat:forget:{action.id}"),),),
+            )
         results = self.memory.search_user_notes(user_id=user_id, query=question, limit=3)
         if not results:
             return ChatReply("В памяти пока нет подходящей информации.")
@@ -950,7 +1259,6 @@ class ChatDialogueEngine:
             label=top.snippet,
             now=now,
         )
-        self._audit_change(user_id, "chat_shopping_add", action.label, now=now)
         return ChatReply(
             "\n".join(lines),
             rows=((ChatButton("Забыть найденное", f"chat:forget:{action.id}"),),),
@@ -972,6 +1280,7 @@ class ChatDialogueEngine:
             label=", ".join(item.text for item in additions),
             now=now,
         )
+        self._audit_change(user_id, "chat_shopping_add", action.label, now=now)
         return ChatReply(
             "Добавил в покупки: " + ", ".join(item.text for item in additions) + ".",
             rows=self._rows(action),
@@ -1029,6 +1338,8 @@ class ChatDialogueEngine:
         else:
             removed = False
         if removed:
+            if action.kind in {"note", "preference"}:
+                self.revisions.remove_from_note(user_id=user_id, text=action.label)
             self._audit_change(user_id, "chat_undo", f"{action.kind}: {action.label}", now=now)
         return ChatReply("Отменил последнее действие." if removed else "Действие уже отменено.")
 
@@ -1134,6 +1445,7 @@ def _looks_like_memory_question(text: str) -> bool:
             "что ",
             "где ",
             "когда ",
+            "как ",
             "помнишь",
             "что ты знаешь",
             "найди ",
@@ -1301,3 +1613,14 @@ def _hour(value: object, *, default: int) -> int:
 
 def _normalize(value: str) -> str:
     return " ".join(value.lower().replace("ё", "е").split()).strip(" .!?")
+
+
+def _fact_terms(value: str) -> set[str]:
+    stopwords = {"что", "как", "где", "когда", "это", "теперь", "актуально"}
+    terms: set[str] = set()
+    for word in re.findall(r"[a-zа-я0-9]+", _normalize(value)):
+        if len(word) < 3 or word in stopwords:
+            continue
+        prefix = word[:3]
+        terms.add("имя" if prefix == "зов" else prefix)
+    return terms

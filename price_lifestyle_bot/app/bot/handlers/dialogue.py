@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from aiogram import F, Router
+from io import BytesIO
+
+import httpx
+from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.config import get_settings
@@ -9,6 +12,7 @@ from app.services.chat_dialogue import (
     ChatReply,
     daily_actions_keyboard,
 )
+from app.services.media_understanding import MediaUnderstandingClient
 
 router = Router()
 
@@ -108,7 +112,7 @@ async def dialogue_callback_handler(callback: CallbackQuery) -> None:
 
 
 @router.message(F.voice)
-async def dialogue_voice_handler(message: Message) -> None:
+async def dialogue_voice_handler(message: Message, bot: Bot) -> None:
     if message.from_user is None:
         return
     caption = (message.caption or "").strip()
@@ -118,11 +122,33 @@ async def dialogue_voice_handler(message: Message) -> None:
             _engine().handle_text(user_id=message.from_user.id, text=caption),
         )
         return
-    await _send_reply(message, _engine().expect_voice_transcript(user_id=message.from_user.id))
+    settings = get_settings()
+    media = MediaUnderstandingClient(settings)
+    if not media.configured or message.voice is None:
+        await _send_reply(message, _engine().expect_voice_transcript(user_id=message.from_user.id))
+        return
+    try:
+        content = BytesIO()
+        await bot.download(message.voice, destination=content)
+        result = await media.transcribe_voice(content=content.getvalue())
+    except (ValueError, httpx.HTTPError, OSError) as exc:
+        await message.answer(f"Не удалось расшифровать голосовое: {exc}")
+        return
+    if result is None:
+        await _send_reply(message, _engine().expect_voice_transcript(user_id=message.from_user.id))
+        return
+    await _send_reply(
+        message,
+        _engine().confirm_media_text(
+            user_id=message.from_user.id,
+            text=result.text,
+            source="voice",
+        ),
+    )
 
 
 @router.message(F.photo)
-async def dialogue_photo_handler(message: Message) -> None:
+async def dialogue_photo_handler(message: Message, bot: Bot) -> None:
     if message.from_user is None:
         return
     caption = (message.caption or "").strip()
@@ -132,7 +158,29 @@ async def dialogue_photo_handler(message: Message) -> None:
             _engine().handle_photo_caption(user_id=message.from_user.id, caption=caption),
         )
         return
-    await _send_reply(message, _engine().expect_photo_receipt(user_id=message.from_user.id))
+    settings = get_settings()
+    media = MediaUnderstandingClient(settings)
+    if not media.configured or not settings.media_vision_model.strip() or not message.photo:
+        await _send_reply(message, _engine().expect_photo_receipt(user_id=message.from_user.id))
+        return
+    try:
+        content = BytesIO()
+        await bot.download(message.photo[-1], destination=content)
+        result = await media.extract_receipt(content=content.getvalue())
+    except (ValueError, httpx.HTTPError, OSError) as exc:
+        await message.answer(f"Не удалось распознать чек: {exc}")
+        return
+    if result is None:
+        await _send_reply(message, _engine().expect_photo_receipt(user_id=message.from_user.id))
+        return
+    await _send_reply(
+        message,
+        _engine().confirm_media_text(
+            user_id=message.from_user.id,
+            text=result.text,
+            source="receipt",
+        ),
+    )
 
 
 @router.message(F.text, ~F.text.startswith("/"))

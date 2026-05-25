@@ -202,6 +202,7 @@ DELIVERY_MODES = {
     "silent",
     "markets",
     "morning",
+    "evening",
     "price_alerts",
 }
 
@@ -211,7 +212,7 @@ def _normalize_delivery_mode(value: str) -> str:
     if normalized not in DELIVERY_MODES:
         raise ValueError(
             "delivery mode must be message, digest, rss, doctor, silent, markets, "
-            "morning, or price_alerts"
+            "morning, evening, or price_alerts"
         )
     return normalized
 

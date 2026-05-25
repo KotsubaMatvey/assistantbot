@@ -85,8 +85,9 @@ async def test_scheduler_sends_reminder_once_and_records_delivery(tmp_path, monk
         def __init__(self) -> None:
             self.messages: list[tuple[int, str]] = []
 
-        async def send_message(self, user_id: int, text: str) -> None:
+        async def send_message(self, user_id: int, text: str, **kwargs) -> None:
             self.messages.append((user_id, text))
+            assert kwargs["reply_markup"] is not None
 
     bot = FakeBot()
     await scheduler._send_due_reminders(bot)  # type: ignore[arg-type]

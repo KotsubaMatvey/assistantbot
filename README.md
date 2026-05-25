@@ -203,6 +203,12 @@ MINI_APP_DOMAIN=assistant.example.com
 ADMIN_TELEGRAM_IDS=[]
 ADMIN_BACKUP_ENABLED=false
 ADMIN_BACKUP_INTERVAL_HOURS=24
+ADMIN_BACKUP_ENCRYPTION_KEY=
+MEDIA_ENABLED=false
+MEDIA_API_BASE_URL=https://openrouter.ai/api/v1
+MEDIA_API_KEY=
+MEDIA_STT_MODEL=openai/whisper-large-v3
+MEDIA_VISION_MODEL=
 ```
 
 Assistant security:
@@ -370,14 +376,15 @@ Set `ASSISTANT_ACCESS_MODE=admin_only` for a private personal deployment. In
 that mode only IDs listed in `ADMIN_TELEGRAM_IDS` may use either chat actions
 or the Mini App; pairing and the stored allowlist are ignored.
 
-`/admin_backup` creates a ZIP containing the local memory vault and a PostgreSQL
-dump, then sends it to the administrator for secure off-host storage. The ZIP
-contains private data and must not be posted to a shared chat. Restore is a
-local administrative operation and is dry-run by default:
+`/admin_backup` creates an archive containing the local memory vault and a
+PostgreSQL dump, then sends it to the administrator for secure off-host storage.
+Set `ADMIN_BACKUP_ENCRYPTION_KEY` to a Fernet key before enabling scheduled
+backups; the produced `.zip.enc` archive cannot be opened without that key.
+Restore is a local administrative operation and is dry-run by default:
 
 ```bash
-python -m app.scripts.restore_backup backups/assistantbot-backup-YYYYMMDD-HHMMSS.zip
-python -m app.scripts.restore_backup backups/assistantbot-backup-YYYYMMDD-HHMMSS.zip --apply
+python -m app.scripts.restore_backup backups/assistantbot-backup-YYYYMMDD-HHMMSS.zip.enc
+python -m app.scripts.restore_backup backups/assistantbot-backup-YYYYMMDD-HHMMSS.zip.enc --apply
 ```
 
 On apply, the former vault is retained beside the restored one as
@@ -386,9 +393,15 @@ restore because `pg_restore` replaces database contents. For a Docker
 deployment, stop `bot` before apply and run restore from the host against the
 localhost PostgreSQL port; the vault bind-mount must not be replaced from
 inside the running container. The host must have `pg_restore` installed.
-Set `ADMIN_BACKUP_ENABLED=true` only after defining `ADMIN_TELEGRAM_IDS`; the
-scheduler will then send the same full backup to the listed administrators
-every `ADMIN_BACKUP_INTERVAL_HOURS`.
+Set `ADMIN_BACKUP_ENABLED=true` only after defining `ADMIN_TELEGRAM_IDS` and
+`ADMIN_BACKUP_ENCRYPTION_KEY`; the scheduler will then send the encrypted full
+backup to the listed administrators every `ADMIN_BACKUP_INTERVAL_HOURS`.
+
+For chat-first operation, enable `MEDIA_ENABLED=true` after configuring a media
+provider and a vision model. Voice commands and extracted receipts are shown
+for confirmation before any task, reminder, or expense is stored. Daily
+briefings are configured in chat, for example: `присылай утреннюю сводку в 8`
+and `каждый вечер в 20:30 подводи итоги`.
 
 ## Tests And Quality
 
@@ -411,7 +424,7 @@ Backend:
 4. Check `curl https://<domain>/api/health` and configure external uptime monitoring for it.
 5. Check `docker compose logs --tail=100 bot gateway`.
 6. Confirm Alembic head with `docker compose exec -T bot alembic current`.
-7. Run `/admin_backup`, keep the received archive off-host, and validate it with the restore CLI.
+7. Generate `ADMIN_BACKUP_ENCRYPTION_KEY`, run `/admin_backup`, keep the encrypted archive and key separately off-host, and validate it with the restore CLI.
 8. Enable `ADMIN_BACKUP_ENABLED=true` after downloading and validating the manual backup.
 
 Mini App:

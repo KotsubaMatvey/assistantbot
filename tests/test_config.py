@@ -40,6 +40,9 @@ def test_assistant_security_settings_read_from_env(monkeypatch) -> None:
     monkeypatch.setenv("MINI_APP_RATE_LIMIT_PER_MINUTE", "45")
     monkeypatch.setenv("ADMIN_BACKUP_ENABLED", "true")
     monkeypatch.setenv("ADMIN_BACKUP_INTERVAL_HOURS", "12")
+    monkeypatch.setenv("ADMIN_BACKUP_ENCRYPTION_KEY", "encrypted-key")
+    monkeypatch.setenv("MEDIA_ENABLED", "true")
+    monkeypatch.setenv("MEDIA_VISION_MODEL", "vision-model")
 
     settings = Settings()
 
@@ -55,6 +58,9 @@ def test_assistant_security_settings_read_from_env(monkeypatch) -> None:
     assert settings.mini_app_rate_limit_per_minute == 45
     assert settings.admin_backup_enabled is True
     assert settings.admin_backup_interval_hours == 12
+    assert settings.admin_backup_encryption_key == "encrypted-key"
+    assert settings.media_enabled is True
+    assert settings.media_vision_model == "vision-model"
 
 
 def test_feature_flags_and_live_refresh_settings_read_from_env(monkeypatch) -> None:

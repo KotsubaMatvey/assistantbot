@@ -97,6 +97,10 @@ def test_dialogue_answers_memory_with_source_and_can_forget_it(tmp_path) -> None
     assert "Удалить из памяти" in confirm.text
     assert removed.text == "Удалил из памяти."
     assert not engine.memory.search_user_notes(user_id=USER_ID, query="мама чай")
+    assert not any(
+        event.action == "chat_shopping_add"
+        for event in engine.audit.list_events(user_id=USER_ID)
+    )
 
 
 def test_dialogue_profile_voice_and_photo_fallbacks(tmp_path) -> None:
@@ -123,6 +127,30 @@ def test_dialogue_profile_voice_and_photo_fallbacks(tmp_path) -> None:
     assert "OCR не подключён" in photo.text
     assert "134.90" in receipt.text
     assert engine.spending.list_receipts(user_id=USER_ID) == []
+
+
+def test_dialogue_applies_recognized_media_only_after_confirmation(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    voice = engine.confirm_media_text(
+        user_id=USER_ID,
+        text="добавь задачу позвонить маме",
+        source="voice",
+    )
+    assert engine.memory.list_open_tasks(user_id=USER_ID) == []
+    task = engine.handle_callback(user_id=USER_ID, data=_callback(voice, "apply"), now=NOW)
+    receipt = engine.confirm_media_text(
+        user_id=USER_ID,
+        text="магазин: Магнит\nмолоко 89.90",
+        source="receipt",
+    )
+    saved = engine.handle_text(user_id=USER_ID, text="да", now=NOW)
+
+    assert "задачу" in task.text
+    assert "89.90" in saved.text
+    assert len(engine.memory.list_open_tasks(user_id=USER_ID)) == 1
+    assert len(engine.spending.list_receipts(user_id=USER_ID)) == 1
+    assert _callback(receipt, "apply") == "chat:apply:pending"
 
 
 def test_dialogue_corrects_latest_expense_without_counting_transfer(tmp_path) -> None:
@@ -155,11 +183,48 @@ def test_dialogue_shows_today_memory_corrections_and_change_history(tmp_path) ->
         now=NOW,
     )
     history = engine.handle_text(user_id=USER_ID, text="покажи историю изменений", now=NOW)
+    answer = engine.handle_text(user_id=USER_ID, text="как зовут маму?", now=NOW)
+    confirm = engine.handle_callback(user_id=USER_ID, data=_callback(answer, "forget"))
+    engine.handle_callback(user_id=USER_ID, data=_callback(confirm, "delete"))
+    after_delete = engine.handle_text(user_id=USER_ID, text="как зовут маму?", now=NOW)
 
     assert "Актуально: имя мамы = Ольга" in corrected.text
     assert "маму зовут Ирина" in today.text and "Ольга" in today.text
     assert "memory_create" in history.text
     assert "Ольга" in history.text
+    assert "Ольга" in answer.text and "Ирина" not in answer.text
+    assert "Ольга" not in after_delete.text
+
+
+def test_dialogue_schedules_briefs_and_responds_to_delivered_reminders(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    morning = engine.handle_text(
+        user_id=USER_ID,
+        text="присылай утреннюю сводку в 8",
+        now=NOW,
+    )
+    evening = engine.handle_text(
+        user_id=USER_ID,
+        text="каждый вечер в 20:30 подводи итоги",
+        now=NOW,
+    )
+    delivered = engine.delivered_reminder_reply(
+        user_id=USER_ID,
+        reminder_id="sent-id",
+        body="оплатить интернет",
+        now=NOW,
+    )
+    tomorrow = engine.handle_callback(
+        user_id=USER_ID,
+        data=_callback(delivered, "rempost").replace(":60", ":1440"),
+        now=NOW,
+    )
+
+    jobs = engine.jobs.list_jobs(user_id=USER_ID)
+    assert "08:00" in morning.text and "20:30" in evening.text
+    assert {job.delivery_mode for job in jobs} == {"morning", "evening"}
+    assert "25.05.2026" in tomorrow.text
 
 
 def test_dialogue_can_undo_latest_record_and_move_expense_to_yesterday(tmp_path) -> None:
