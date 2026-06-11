@@ -7,8 +7,9 @@ markets, budget and shopping.
 The main product is no longer price comparison. Shopping and price tracking are
 secondary skills. The default interaction is:
 
-- write a thought, fact, task, decision or link as normal Telegram text;
-- store it in local second brain memory;
+- write naturally in Telegram chat for freeform conversation when an LLM provider is enabled;
+- save facts and perform actions through explicit intent, for example
+  `запомни ...`, `добавь задачу ...`, `напомни ...` or `потратил ...`;
 - retrieve context through `/agenda`, `/today`, `/tasks`, `/recent`, `/context`,
   `/memory` and `/sources`;
 - control the session through `/status`, `/new`, `/compact`, `/mode`, `/trace`
@@ -36,7 +37,7 @@ https://assistantbot-olive.vercel.app/
 
 Second brain memory:
 
-- normal text capture without a command;
+- explicit natural-language capture such as `запомни, что ...`;
 - `/capture <text>` and `/remember <text>` for explicit capture;
 - `/export_memory` sends the user's memory ZIP in Telegram; upload a ZIP with
   caption `/import_memory` to validate it or `/import_memory --apply` to import;
@@ -80,13 +81,16 @@ Secondary skills:
 The Mini App lives in `miniapp/` and is a Vite + React + TypeScript frontend.
 It is backed by a local API:
 
-- default tab: `Сегодня`;
-- Today tab reads real agenda, tasks, reminders, notes and focus items;
+- bottom tabs: `Сегодня`, `Память`, `Бюджет`, `Чат`, `Ещё`;
+- Today tab shows the week strip, next reminders and tasks with one-tap task
+  completion, a unified quick-add (task/note/reminder) and recent notes;
+- Memory tab reads real memory health, objects, unified sources and events
+  with search and filters;
 - Finance tab reads and writes local accounts, expenses, income,
-  subscriptions, receipts and cashflow;
-- Memory tab reads real memory health, objects and unified sources;
-- Markets tab refreshes market data through the backend API;
-- Shopping tab still sends basket comparison payloads to the bot.
+  subscriptions and receipts through a single segmented add form;
+- Chat tab is a memory-grounded assistant chat with local history;
+- More tab keeps the secondary skills: basket comparison, market quotes and
+  operator/service commands.
 
 Mini App API requests verify fresh Telegram `initData` and enforce the bot
 allowlist. In local development only, explicitly set
@@ -241,14 +245,19 @@ LLM_OVH_API_KEY=
 LLM_SILICONFLOW_API_KEY=
 ```
 
-When `LLM_ENABLED=true`, `/ask` can use the first available configured cloud
-provider and automatically falls through to the next model/provider on
-quota/rate-limit errors. Memory context is not sent to cloud providers unless
-`LLM_CLOUD_CONTEXT_ALLOWED=true`; otherwise `/ask` keeps the existing local
-rule-based answer. `LLM_CONTEXT_MODE` accepts `none`, `snippets`, `redacted`, or
-`full`. For providers not covered by the built-in presets, set
-`LLM_PROVIDER_SPECS_JSON` to a JSON list of OpenAI-compatible endpoints. Built-in
-`LLM_*_MODEL` values may contain a comma-separated model fallback list.
+When `LLM_ENABLED=true`, ordinary chat messages that are not recognized as
+explicit local actions are answered through the first available configured cloud
+provider and automatically fall through to the next model/provider on
+quota/rate-limit errors. Freeform replies keep a short rolling conversation
+history (per user, stored locally, reset with `/new`) so the dialogue stays
+coherent. They are not implicitly stored in memory. `/ask` can
+also use an LLM for memory-grounded answers, but memory context is not sent to
+cloud providers unless `LLM_CLOUD_CONTEXT_ALLOWED=true`; otherwise `/ask` keeps
+the existing local rule-based answer. `LLM_CONTEXT_MODE` accepts `none`,
+`snippets`, `redacted`, or `full`. For providers not covered by the built-in
+presets, set `LLM_PROVIDER_SPECS_JSON` to a JSON list of OpenAI-compatible
+endpoints. Built-in `LLM_*_MODEL` values may contain a comma-separated model
+fallback list.
 
 Feature flags:
 
@@ -321,9 +330,11 @@ local metadata under:
 - `users/<telegram_id>/baskets`
 - `profile.md`
 
-Memory commands and `/ask` are local and rule-based. External network access is
-only used for explicit commands such as `/learn_url`, `/rss_digest`, market data
-or scraping/admin refresh.
+Local actions and memory search stay local and rule-based. With `LLM_ENABLED=true`,
+freeform chat messages may be sent to the configured cloud LLM provider; memory
+snippets are sent only under the separate `LLM_CLOUD_CONTEXT_ALLOWED=true`
+setting. Other external network use includes `/learn_url`, `/rss_digest`,
+market data and scraping/admin refresh.
 
 ## Shopping Skill
 
@@ -397,11 +408,13 @@ Set `ADMIN_BACKUP_ENABLED=true` only after defining `ADMIN_TELEGRAM_IDS` and
 `ADMIN_BACKUP_ENCRYPTION_KEY`; the scheduler will then send the encrypted full
 backup to the listed administrators every `ADMIN_BACKUP_INTERVAL_HOURS`.
 
-For chat-first operation, enable `MEDIA_ENABLED=true` after configuring a media
-provider and a vision model. Voice commands and extracted receipts are shown
-for confirmation before any task, reminder, or expense is stored. Daily
-briefings are configured in chat, for example: `присылай утреннюю сводку в 8`
-and `каждый вечер в 20:30 подводи итоги`.
+For chat-first operation, configure `LLM_ENABLED=true` for freeform dialogue
+and use explicit phrases such as `запомни ...` for memory writes. Enable
+`MEDIA_ENABLED=true` after configuring a media provider and a vision model.
+Voice commands and extracted receipts are shown for confirmation before any
+task, reminder, or expense is stored. Daily briefings are configured in chat,
+for example: `присылай утреннюю сводку в 8` and
+`каждый вечер в 20:30 подводи итоги`.
 
 ## Tests And Quality
 

@@ -48,6 +48,7 @@ from app.bot.handlers.shopping import _handle_basket
 from app.config import get_settings
 from app.logging_config import get_logger
 from app.services.audit_log import AuditLogStore
+from app.services.chat_history import ChatHistoryStore
 from app.services.llm_client import answer_freeform_with_llm
 from app.services.mini_app import parse_mini_app_payload
 from app.services.mini_app_state import (
@@ -95,8 +96,23 @@ async def mini_app_data_handler(message: Message) -> None:
             "mini_app_assistant_message",
             f"chars={len(payload.text)}",
         )
-        llm_answer = await answer_freeform_with_llm(text=payload.text, settings=settings)
-        await message.answer((llm_answer or _pixel_assistant_reply(payload.text))[:3900])
+        history_store = ChatHistoryStore(settings.obsidian_vault_path)
+        history = [
+            {"role": turn.role, "content": turn.text}
+            for turn in history_store.list_turns(user_id=user_id)
+        ]
+        llm_answer = await answer_freeform_with_llm(
+            text=payload.text,
+            settings=settings,
+            history=history,
+        )
+        if llm_answer:
+            history_store.append_exchange(
+                user_id=user_id,
+                user_text=payload.text,
+                assistant_text=llm_answer,
+            )
+        await message.answer((llm_answer or _assistant_fallback_reply(payload.text))[:3900])
         return
     if payload.type == "task_create":
         add_mini_app_task(
@@ -348,17 +364,17 @@ def _audit_mini_app(message: Message, action: str, detail: str) -> None:
         logger.warning("mini_app_audit_failed", action=action, error=str(exc))
 
 
-def _pixel_assistant_reply(text: str) -> str:
+def _assistant_fallback_reply(text: str) -> str:
     normalized = text.lower()
     if "цен" in normalized or "покуп" in normalized:
-        return "Pixel helper: для покупок используй /prices, /watch_price и /pantry_plan."
+        return "Для покупок используй /prices, /watch_price и /pantry_plan."
     if "рын" in normalized or "btc" in normalized:
-        return "Pixel helper: для рынка используй /markets, /market_brief или /morning."
+        return "Для рынка используй /markets, /market_brief или /morning."
     if "зада" in normalized or "план" in normalized:
-        return "Pixel helper: для задач используй /agenda, /task и /compact."
+        return "Для задач используй /agenda, /task и /compact."
     if "пам" in normalized or "контекст" in normalized:
-        return "Pixel helper: для контекста используй /lifestyle_context или /memory."
+        return "Для контекста используй /lifestyle_context или /memory."
     return (
-        "Pixel helper: могу открыть /morning, /agenda, /markets, /market_brief, "
+        "Могу открыть /morning, /agenda, /markets, /market_brief, "
         "/pantry, /budget или /lifestyle_context."
     )

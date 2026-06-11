@@ -239,6 +239,13 @@ def add_mini_app_task(*, vault_path: str, user_id: int, text: str) -> None:
     ObsidianMemory(vault_path).create_task(user_id=user_id, text=text)
 
 
+def complete_mini_app_task(*, vault_path: str, user_id: int, task_id: str) -> bool:
+    clean_id = task_id.strip()
+    if not clean_id or any(part in clean_id for part in ("/", "\\", "..")):
+        raise ValueError("task id is invalid")
+    return ObsidianMemory(vault_path).complete_task(user_id=user_id, task_id=clean_id)
+
+
 def add_mini_app_note(*, vault_path: str, user_id: int, text: str) -> None:
     ObsidianMemory(vault_path).remember_user_note(user_id=user_id, text=text)
 

@@ -1,14 +1,11 @@
-import type { AssistantState } from "./assistant";
 import type { BotCommand } from "../types/telegram";
 
-export type TabId = "today" | "finance" | "shopping" | "markets" | "assistant" | "memory";
+export type TabId = "today" | "memory" | "finance" | "chat" | "more";
 
 export type AppEvents = {
   "tab:selected": { tab: TabId };
-  "assistant:set-state": { state: AssistantState };
   "command:send": { command: BotCommand };
   "basket:compare": { text: string };
-  "assistant:prompt": { text: string };
   "toast:show": { message: string };
 };
 

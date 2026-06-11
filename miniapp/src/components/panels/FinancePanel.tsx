@@ -1,7 +1,6 @@
-import { CreditCard, Plus, ReceiptText, Repeat, TrendingUp, Wallet } from "lucide-react";
-import type { CSSProperties, FormEvent, ReactNode } from "react";
+import { ArrowDownLeft, ArrowUpRight, Plus, ReceiptText, Repeat, Wallet } from "lucide-react";
+import type { CSSProperties, FormEvent } from "react";
 import { useMemo, useState } from "react";
-import { ActionButton } from "../ActionButton";
 import { financeActions } from "../../domain/data";
 import type { MiniAppState } from "../../domain/api";
 import { eventBus } from "../../domain/events";
@@ -13,6 +12,16 @@ type FinancePanelProps = {
   onMutate: (path: string, body: Record<string, unknown>) => Promise<void>;
 };
 
+type AddKind = "expense" | "income" | "account" | "subscription" | "receipt";
+
+const addKinds: { id: AddKind; label: string }[] = [
+  { id: "expense", label: "Расход" },
+  { id: "income", label: "Доход" },
+  { id: "account", label: "Счёт" },
+  { id: "subscription", label: "Подписка" },
+  { id: "receipt", label: "Чек" },
+];
+
 type BudgetSlice = {
   name: string;
   amount: string;
@@ -21,387 +30,335 @@ type BudgetSlice = {
   color: string;
 };
 
-type LedgerRow = {
-  id: string;
-  left: string;
-  right: string;
-  detail?: string;
-};
-
 export function FinancePanel({ state, loading, error, onMutate }: FinancePanelProps) {
-  const [expense, setExpense] = useState({ amount: "", category: "", note: "" });
-  const [income, setIncome] = useState({ amount: "", category: "", note: "" });
-  const [account, setAccount] = useState({ name: "", balance: "" });
-  const [subscription, setSubscription] = useState({ name: "", amount: "" });
+  const [addKind, setAddKind] = useState<AddKind>("expense");
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("");
+  const [note, setNote] = useState("");
   const [receipt, setReceipt] = useState("");
+
   const budgetSlices = useMemo(() => getBudgetSlices(state?.budget.categories ?? []), [state]);
   const chartStyle = useMemo(() => budgetChartStyle(budgetSlices), [budgetSlices]);
   const budgetProgress = getBudgetProgress(state?.budget.spent, state?.budget.limit);
-  const ledgerRows = useMemo<LedgerRow[]>(
-    () => [
-      ...(state?.accounts ?? []).map((item) => ({
-        id: `account-${item.id}`,
-        left: item.name,
-        right: `${item.balance} ${item.currency}`,
-        detail: "Счет",
-      })),
-      ...(state?.subscriptions ?? []).map((item) => ({
-        id: `subscription-${item.id}`,
-        left: item.name,
-        right: `${item.amount} / ${item.cycle}`,
-        detail: "Подписка",
-      })),
-      ...(state?.transactions ?? []).slice(0, 6).map((item) => ({
-        id: `transaction-${item.id}`,
-        left: `${translateTransactionKind(item.kind)}: ${item.category}`,
-        right: item.amount,
-        detail: item.note,
-      })),
-    ],
-    [state],
-  );
+  const hasBudgetLimit = parseMoney(state?.budget.limit ?? "") > 0;
 
-  async function submitTransaction(kind: "expense" | "income", event: FormEvent) {
+  async function submitAdd(event: FormEvent) {
     event.preventDefault();
-    const value = kind === "expense" ? expense : income;
-    if (!value.amount.trim() || !value.category.trim()) {
+    if (addKind === "receipt") {
+      if (!receipt.trim()) {
+        return;
+      }
+      await onMutate("/api/miniapp/receipt", { text: receipt });
+      setReceipt("");
       return;
     }
-    await onMutate("/api/miniapp/finance/transaction", { kind, ...value });
-    if (kind === "expense") {
-      setExpense({ amount: "", category: "", note: "" });
-    } else {
-      setIncome({ amount: "", category: "", note: "" });
+    if (addKind === "expense" || addKind === "income") {
+      if (!amount.trim() || !category.trim()) {
+        return;
+      }
+      await onMutate("/api/miniapp/finance/transaction", {
+        kind: addKind,
+        amount: amount.trim(),
+        category: category.trim(),
+        note: note.trim(),
+      });
     }
+    if (addKind === "account") {
+      if (!category.trim() || !amount.trim()) {
+        return;
+      }
+      await onMutate("/api/miniapp/finance/account", {
+        name: category.trim(),
+        balance: amount.trim(),
+      });
+    }
+    if (addKind === "subscription") {
+      if (!category.trim() || !amount.trim()) {
+        return;
+      }
+      await onMutate("/api/miniapp/finance/subscription", {
+        name: category.trim(),
+        amount: amount.trim(),
+      });
+    }
+    setAmount("");
+    setCategory("");
+    setNote("");
   }
 
-  async function submitAccount(event: FormEvent) {
-    event.preventDefault();
-    if (!account.name.trim() || !account.balance.trim()) {
-      return;
-    }
-    await onMutate("/api/miniapp/finance/account", account);
-    setAccount({ name: "", balance: "" });
-  }
-
-  async function submitSubscription(event: FormEvent) {
-    event.preventDefault();
-    if (!subscription.name.trim() || !subscription.amount.trim()) {
-      return;
-    }
-    await onMutate("/api/miniapp/finance/subscription", subscription);
-    setSubscription({ name: "", amount: "" });
-  }
-
-  async function submitReceipt(event: FormEvent) {
-    event.preventDefault();
-    if (!receipt.trim()) {
-      return;
-    }
-    await onMutate("/api/miniapp/receipt", { text: receipt });
-    setReceipt("");
-  }
+  const transactions = (state?.transactions ?? []).slice(0, 8);
+  const accounts = state?.accounts ?? [];
+  const subscriptions = state?.subscriptions ?? [];
 
   return (
-    <section className="grid gap-4" aria-label="Бюджет">
+    <section className="grid gap-3.5" aria-label="Бюджет">
       {(loading || error) && (
-        <div className="glass-panel glass-panel-tight p-3 text-sm text-[var(--muted)]">
-          {loading ? "Загружаю актуальные данные" : error}
+        <div className={error ? "notice notice-error" : "notice"}>
+          <span>{loading ? "Загружаю данные…" : error}</span>
         </div>
       )}
 
-      <section className="glass-panel grid grid-cols-[1fr_220px] gap-4 p-4 max-[680px]:grid-cols-1">
-        <div>
-          <div className="section-title">
-            <span>Обзор бюджета</span>
-            <span className="text-sm text-[var(--accent-2)]">{state?.month ?? "Текущий"}</span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <MetricCard label="Баланс" value={state?.balance ?? "0.00"} />
-            <MetricCard label="Расходы" value={state?.expenses ?? "0.00"} />
-            <MetricCard label="Доходы" value={state?.income ?? "0.00"} />
-            <MetricCard label="Прогноз" value={state?.forecast ?? "0.00"} />
-          </div>
-          <div className="budget-progress mt-3">
-            <div className="flex items-center justify-between gap-3">
-              <span>План/факт</span>
-              <strong>{Math.round(budgetProgress)}%</strong>
-            </div>
-            <div className="budget-track" aria-hidden="true">
-              <span style={{ width: `${budgetProgress}%` }} />
-            </div>
-          </div>
+      <section className="card card-pad grid gap-3.5">
+        <div className="card-title">
+          <span>Обзор</span>
+          <span className="card-title-meta">{state?.month ?? ""}</span>
         </div>
-        <div className="budget-chart-card grid place-items-center gap-3">
-          <div className="budget-ring relative size-44 rounded-full" style={chartStyle}>
-            <div className="absolute inset-10 grid place-items-center rounded-full bg-[var(--bg)] text-center">
-              <span className="app-kicker">Остаток</span>
-              <strong className="text-lg font-black text-white">
-                {state?.budget.remaining ?? "0.00"}
-              </strong>
-            </div>
-          </div>
-          <div className="budget-legend">
-            {budgetSlices.slice(0, 4).map((slice) => (
-              <span key={slice.name}>
-                <i style={{ background: slice.color }} />
-                {slice.name}
+        <div className="grid grid-cols-4 gap-2 max-[460px]:grid-cols-2">
+          <Stat label="Баланс" value={state?.balance ?? "0.00"} />
+          <Stat label="Расходы" value={state?.expenses ?? "0.00"} tone="danger" />
+          <Stat label="Доходы" value={state?.income ?? "0.00"} tone="success" />
+          <Stat label="Прогноз" value={state?.forecast ?? "0.00"} />
+        </div>
+        {hasBudgetLimit && (
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between gap-3 text-[12.5px]">
+              <span className="muted-text font-medium">
+                Бюджет: {state?.budget.spent} из {state?.budget.limit}
               </span>
-            ))}
-            {budgetSlices.length === 0 && <span>Категории появятся после первого расхода</span>}
+              <strong className="text-[var(--text)]">{Math.round(budgetProgress)}%</strong>
+            </div>
+            <div
+              className={budgetProgress >= 100 ? "progress progress-over" : "progress"}
+              aria-hidden="true"
+            >
+              <span style={{ width: `${Math.min(100, budgetProgress)}%` }} />
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
-      <section className="glass-panel glass-panel-tight grid gap-3 p-4">
-        <div className="section-title">
-          <span>Категории</span>
-          <span className="text-sm text-[var(--accent)]">{budgetSlices.length || "нет данных"}</span>
+      {budgetSlices.length > 0 && (
+        <section className="card card-pad grid gap-3.5">
+          <div className="card-title">
+            <span>Категории</span>
+            <span className="card-title-meta">{state?.month ?? ""}</span>
+          </div>
+          <div className="flex items-center gap-5 max-[460px]:flex-col">
+            <div className="donut" style={chartStyle}>
+              <div className="donut-center">
+                <span>Остаток</span>
+                <strong>{state?.budget.remaining ?? "0.00"}</strong>
+              </div>
+            </div>
+            <div className="grid min-w-0 flex-1 gap-2.5 self-stretch">
+              {budgetSlices.slice(0, 5).map((slice) => (
+                <div className="cat-row" key={slice.name}>
+                  <div className="cat-row-head">
+                    <span>
+                      <i
+                        className="legend-dot"
+                        style={{ background: slice.color, color: slice.color }}
+                      />
+                      {slice.name}
+                    </span>
+                    <strong>{slice.amount}</strong>
+                  </div>
+                  <div className="cat-bar" aria-hidden="true">
+                    <span
+                      style={{
+                        background: slice.color,
+                        color: slice.color,
+                        width: `${Math.round(slice.percent)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <form className="card card-pad grid gap-2.5" onSubmit={(event) => void submitAdd(event)}>
+        <div className="segmented" role="tablist" aria-label="Тип записи">
+          {addKinds.map((kind) => (
+            <button
+              key={kind.id}
+              className={addKind === kind.id ? "segment segment-active" : "segment"}
+              type="button"
+              onClick={() => setAddKind(kind.id)}
+            >
+              {kind.label}
+            </button>
+          ))}
         </div>
-        <div className="budget-bar-list">
-          {budgetSlices.map((slice) => (
-            <article className="budget-bar-row" key={slice.name}>
-              <div className="flex items-center justify-between gap-3">
-                <span>
-                  <i style={{ background: slice.color }} />
-                  {slice.name}
+        {addKind === "receipt" ? (
+          <div className="grid gap-2">
+            <textarea
+              className="input min-h-24 resize-none"
+              value={receipt}
+              placeholder={"магазин: Магнит\nмолоко 89.90\nхлеб 45"}
+              onChange={(event) => setReceipt(event.target.value)}
+            />
+            <button className="btn btn-primary" type="submit">
+              <ReceiptText size={15} />
+              <span>Сохранить чек</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_42px] gap-2 max-[460px]:grid-cols-[minmax(0,1fr)_42px]">
+            <input
+              className="input"
+              inputMode="decimal"
+              value={amount}
+              placeholder={addKind === "account" ? "Баланс" : "Сумма"}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            <input
+              className="input max-[460px]:col-start-1"
+              value={category}
+              placeholder={
+                addKind === "expense"
+                  ? "Категория"
+                  : addKind === "income"
+                    ? "Источник"
+                    : "Название"
+              }
+              onChange={(event) => setCategory(event.target.value)}
+            />
+            {(addKind === "expense" || addKind === "income") && (
+              <input
+                className="input col-span-2 max-[460px]:col-span-1 max-[460px]:col-start-1"
+                value={note}
+                placeholder="Комментарий (не обязательно)"
+                onChange={(event) => setNote(event.target.value)}
+              />
+            )}
+            <button
+              className="chat-send col-start-3 row-start-1 max-[460px]:col-start-2"
+              type="submit"
+              aria-label="Сохранить"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+        )}
+      </form>
+
+      {(accounts.length > 0 || subscriptions.length > 0) && (
+        <section className="card card-pad grid gap-2.5">
+          <div className="card-title">
+            <span>Счета и подписки</span>
+          </div>
+          <div className="grid gap-2">
+            {accounts.map((item) => (
+              <article key={`account-${item.id}`} className="row">
+                <span className="row-icon">
+                  <Wallet size={15} />
                 </span>
-                <strong>{slice.amount}</strong>
+                <div className="row-body">
+                  <span className="row-title">{item.name}</span>
+                  <span className="row-sub">Счёт</span>
+                </div>
+                <span className="row-meta">
+                  {item.balance} {item.currency}
+                </span>
+              </article>
+            ))}
+            {subscriptions.map((item) => (
+              <article key={`subscription-${item.id}`} className="row">
+                <span className="row-icon">
+                  <Repeat size={15} />
+                </span>
+                <div className="row-body">
+                  <span className="row-title">{item.name}</span>
+                  <span className="row-sub">Подписка · {item.cycle}</span>
+                </div>
+                <span className="row-meta">{item.amount}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="card card-pad grid gap-2.5">
+        <div className="card-title">
+          <span>Операции</span>
+          <span className="card-title-meta">{state?.month ?? ""}</span>
+        </div>
+        <div className="grid gap-2">
+          {transactions.map((item) => (
+            <article key={item.id} className="row">
+              <span
+                className="row-icon"
+                style={
+                  item.kind === "income"
+                    ? { background: "var(--success-soft)", color: "var(--success)" }
+                    : { background: "var(--danger-soft)", color: "var(--danger)" }
+                }
+              >
+                {item.kind === "income" ? (
+                  <ArrowDownLeft size={15} />
+                ) : (
+                  <ArrowUpRight size={15} />
+                )}
+              </span>
+              <div className="row-body">
+                <span className="row-title">{item.category}</span>
+                <span className="row-sub">{item.note || formatDate(item.created_at)}</span>
               </div>
-              <div className="budget-bar" aria-label={`${slice.name}: ${Math.round(slice.percent)}%`}>
-                <span style={{ background: slice.color, width: `${slice.percent}%` }} />
-              </div>
+              <span
+                className="row-meta"
+                style={{ color: item.kind === "income" ? "var(--success)" : "var(--text)" }}
+              >
+                {item.kind === "income" ? "+" : "−"}
+                {item.amount}
+              </span>
             </article>
           ))}
-          {!loading && budgetSlices.length === 0 && (
-            <article className="empty-state">
-              <strong>Нет расходов по категориям</strong>
-              <span>Добавь расход или чек, и здесь появится разбивка бюджета.</span>
+          {!loading && transactions.length === 0 && (
+            <article className="empty">
+              <strong>Операций пока нет</strong>
+              <span>Добавь расход, доход или чек выше.</span>
             </article>
           )}
         </div>
       </section>
 
-      <section className="glass-panel glass-panel-tight grid gap-3 p-3">
-        <MoneyForm
-          icon={<CreditCard size={16} />}
-          title="Расход"
-          amount={expense.amount}
-          category={expense.category}
-          note={expense.note}
-          onAmount={(amount) => setExpense((current) => ({ ...current, amount }))}
-          onCategory={(category) => setExpense((current) => ({ ...current, category }))}
-          onNote={(note) => setExpense((current) => ({ ...current, note }))}
-          onSubmit={(event) => void submitTransaction("expense", event)}
-        />
-        <MoneyForm
-          icon={<TrendingUp size={16} />}
-          title="Доход"
-          amount={income.amount}
-          category={income.category}
-          note={income.note}
-          onAmount={(amount) => setIncome((current) => ({ ...current, amount }))}
-          onCategory={(category) => setIncome((current) => ({ ...current, category }))}
-          onNote={(note) => setIncome((current) => ({ ...current, note }))}
-          onSubmit={(event) => void submitTransaction("income", event)}
-        />
-        <PairForm
-          icon={<Wallet size={16} />}
-          title="Счет"
-          first={account.name}
-          second={account.balance}
-          onFirst={(name) => setAccount((current) => ({ ...current, name }))}
-          onSecond={(balance) => setAccount((current) => ({ ...current, balance }))}
-          onSubmit={(event) => void submitAccount(event)}
-        />
-        <PairForm
-          icon={<Repeat size={16} />}
-          title="Подписка"
-          first={subscription.name}
-          second={subscription.amount}
-          onFirst={(name) => setSubscription((current) => ({ ...current, name }))}
-          onSecond={(amount) => setSubscription((current) => ({ ...current, amount }))}
-          onSubmit={(event) => void submitSubscription(event)}
-        />
-        <form className="grid gap-2" onSubmit={(event) => void submitReceipt(event)}>
-          <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
-            <ReceiptText size={16} />
-            Чек
-          </label>
-          <textarea
-            className="surface-input min-h-24 p-3 text-sm"
-            value={receipt}
-            placeholder="Вставь текст чека"
-            onChange={(event) => setReceipt(event.target.value)}
-          />
-          <button className="action-button action-button-primary" type="submit">
-            <Plus size={16} />
-            Сохранить чек
-          </button>
-        </form>
-      </section>
-
-      <div className="grid gap-2">
-        {ledgerRows.map((item) => (
-          <DataRow key={item.id} left={item.left} right={item.right} detail={item.detail} />
-        ))}
-        {!loading && ledgerRows.length === 0 && (
-          <article className="empty-state">
-            <strong>Финансовая лента пуста</strong>
-            <span>Добавь счет, подписку, расход или чек.</span>
-          </article>
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 max-[620px]:grid-cols-2">
+      <div className="flex flex-wrap gap-2">
         {financeActions.map((action) => (
-          <ActionButton
+          <button
             key={action.command}
-            icon={action.icon}
-            primary={action.primary}
+            className="chip"
+            type="button"
             onClick={() => eventBus.emit("command:send", { command: action.command })}
           >
             {action.label}
-          </ActionButton>
+          </button>
         ))}
       </div>
     </section>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "success" | "danger";
+}) {
   return (
-    <article className="metric-card">
+    <article className="stat">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong
+        style={
+          tone === "success"
+            ? { color: "var(--success)" }
+            : tone === "danger"
+              ? { color: "var(--danger)" }
+              : undefined
+        }
+      >
+        {value}
+      </strong>
     </article>
   );
 }
 
-function MoneyForm({
-  icon,
-  title,
-  amount,
-  category,
-  note,
-  onAmount,
-  onCategory,
-  onNote,
-  onSubmit,
-}: {
-  icon: ReactNode;
-  title: string;
-  amount: string;
-  category: string;
-  note: string;
-  onAmount: (value: string) => void;
-  onCategory: (value: string) => void;
-  onNote: (value: string) => void;
-  onSubmit: (event: FormEvent) => void;
-}) {
-  return (
-    <form
-      className="grid grid-cols-[112px_1fr_1fr_1.35fr_44px] gap-2 max-[720px]:grid-cols-1"
-      onSubmit={onSubmit}
-    >
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
-        {icon}
-        {title}
-      </label>
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        inputMode="decimal"
-        value={amount}
-        placeholder="Сумма"
-        onChange={(event) => onAmount(event.target.value)}
-      />
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        value={category}
-        placeholder="Категория"
-        onChange={(event) => onCategory(event.target.value)}
-      />
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        value={note}
-        placeholder="Комментарий"
-        onChange={(event) => onNote(event.target.value)}
-      />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Сохранить: ${title}`}>
-        <Plus size={16} />
-      </button>
-    </form>
-  );
-}
-
-function PairForm({
-  icon,
-  title,
-  first,
-  second,
-  onFirst,
-  onSecond,
-  onSubmit,
-}: {
-  icon: ReactNode;
-  title: string;
-  first: string;
-  second: string;
-  onFirst: (value: string) => void;
-  onSecond: (value: string) => void;
-  onSubmit: (event: FormEvent) => void;
-}) {
-  return (
-    <form className="grid grid-cols-[112px_1fr_1fr_44px] gap-2 max-[620px]:grid-cols-1" onSubmit={onSubmit}>
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
-        {icon}
-        {title}
-      </label>
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        value={first}
-        placeholder="Название"
-        onChange={(event) => onFirst(event.target.value)}
-      />
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        inputMode="decimal"
-        value={second}
-        placeholder="Сумма"
-        onChange={(event) => onSecond(event.target.value)}
-      />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Сохранить: ${title}`}>
-        <Plus size={16} />
-      </button>
-    </form>
-  );
-}
-
-function DataRow({ left, right, detail = "" }: { left: string; right: string; detail?: string }) {
-  return (
-    <article className="record-row">
-      <div className="flex items-start justify-between gap-4 max-[520px]:flex-col">
-        <div className="min-w-0">
-          <strong className="block truncate text-sm text-white">{left}</strong>
-          {detail && <span className="muted-text mt-1 block truncate text-xs">{detail}</span>}
-        </div>
-        <b className="whitespace-nowrap text-[var(--accent)]">{right}</b>
-      </div>
-    </article>
-  );
-}
-
-function translateTransactionKind(kind: string): string {
-  if (kind === "expense") {
-    return "Расход";
-  }
-  if (kind === "income") {
-    return "Доход";
-  }
-  return kind;
-}
-
-const budgetColors = ["var(--accent)", "var(--accent-2)", "var(--accent-3)", "var(--accent-4)", "#d3d3d3"];
+const budgetColors = ["#8b7bff", "#2dd4bf", "#ff5fa2", "#ffb35c", "#5ea2ff"];
 
 function getBudgetSlices(categories: { name: string; amount: string }[]): BudgetSlice[] {
   const items = categories
@@ -418,15 +375,13 @@ function getBudgetSlices(categories: { name: string; amount: string }[]): Budget
   }
   return items.map((category) => ({
     ...category,
-    percent: Math.max(4, (category.value / total) * 100),
+    percent: Math.max(3, (category.value / total) * 100),
   }));
 }
 
 function budgetChartStyle(slices: BudgetSlice[]): CSSProperties {
   if (slices.length === 0) {
-    return {
-      background: "conic-gradient(rgba(255,255,255,0.16) 0 100%)",
-    };
+    return { background: "conic-gradient(var(--surface-3) 0 100%)" };
   }
   let cursor = 0;
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
@@ -444,9 +399,17 @@ function getBudgetProgress(spent?: string, limit?: string): number {
   if (limitValue <= 0) {
     return 0;
   }
-  return Math.min(100, Math.max(0, (spentValue / limitValue) * 100));
+  return Math.max(0, (spentValue / limitValue) * 100);
 }
 
 function parseMoney(value: string): number {
   return Number.parseFloat(value.replace(",", ".")) || 0;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }

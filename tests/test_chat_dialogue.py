@@ -244,3 +244,96 @@ def test_dialogue_can_undo_latest_record_and_move_expense_to_yesterday(tmp_path)
         event.action == "chat_expense_date"
         for event in engine.audit.list_events(user_id=USER_ID)
     )
+
+
+def test_dialogue_records_income_and_undoes_it(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    saved = engine.handle_text(user_id=USER_ID, text="Получил 50000 зарплата", now=NOW)
+    undone = engine.handle_text(user_id=USER_ID, text="отмени последнюю запись", now=NOW)
+
+    assert "доход" in saved.text.lower()
+    assert "50" in saved.text
+    assert "Отменил" in undone.text
+    assert engine.finance.list_transactions(user_id=USER_ID) == []
+
+
+def test_dialogue_asks_income_source_when_missing(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    prompt = engine.handle_text(user_id=USER_ID, text="заработал 3000", now=NOW)
+    saved = engine.handle_text(user_id=USER_ID, text="фриланс", now=NOW)
+
+    assert "Откуда доход" in prompt.text
+    assert "фриланс" in saved.text
+    transactions = engine.finance.list_transactions(user_id=USER_ID, kind="income")
+    assert len(transactions) == 1
+    assert transactions[0].amount == Decimal("3000")
+
+
+def test_dialogue_parses_bought_item_as_expense(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    saved = engine.handle_text(user_id=USER_ID, text="купил кофе за 300", now=NOW)
+
+    assert "расход" in saved.text.lower()
+    transactions = engine.finance.list_transactions(user_id=USER_ID, kind="expense")
+    assert len(transactions) == 1
+    assert transactions[0].category == "кофе"
+
+
+def test_dialogue_summarizes_spending_for_periods(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+    engine.handle_text(user_id=USER_ID, text="потратил 100 на еду", now=NOW)
+    engine.handle_text(
+        user_id=USER_ID,
+        text="потратил 200 на еду",
+        now=NOW.replace(day=20),
+    )
+
+    today = engine.handle_text(user_id=USER_ID, text="сколько потратил сегодня", now=NOW)
+    week = engine.handle_text(user_id=USER_ID, text="сколько потратил за неделю", now=NOW)
+    month = engine.handle_text(user_id=USER_ID, text="сколько потратил на еду", now=NOW)
+
+    assert "Сегодня" in today.text and "100" in today.text
+    assert "За неделю" in week.text and "300" in week.text
+    assert "2026-05" in month.text and "300" in month.text
+
+
+def test_dialogue_explains_capabilities(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    reply = engine.handle_text(user_id=USER_ID, text="что ты умеешь?", now=NOW)
+
+    assert "second brain" in reply.text
+    assert "запомни" in reply.text
+    assert reply.event is None
+
+
+def test_dialogue_routes_freeform_text_without_implicit_memory_capture(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    message = engine.handle_text(user_id=USER_ID, text="Расскажи, как лучше начать день", now=NOW)
+    question = engine.handle_text(
+        user_id=USER_ID,
+        text="Что такое интервальное планирование?",
+        now=NOW,
+    )
+
+    assert message.event == "freeform"
+    assert question.event == "freeform"
+    assert engine.memory.search_user_notes(user_id=USER_ID, query="начать день") == []
+    assert engine.memory.search_user_notes(user_id=USER_ID, query="планирование") == []
+
+
+def test_dialogue_keeps_explicit_memory_capture_in_conversation_first_mode(tmp_path) -> None:
+    engine = ChatDialogueEngine(str(tmp_path))
+
+    saved = engine.handle_text(
+        user_id=USER_ID,
+        text="Запомни, что лучше планировать день вечером",
+        now=NOW,
+    )
+
+    assert "Запомнил" in saved.text
+    assert engine.memory.search_user_notes(user_id=USER_ID, query="планировать день вечером")

@@ -29,6 +29,7 @@ from app.services.mini_app_state import (
     add_mini_app_task,
     add_mini_app_transaction,
     build_mini_app_state,
+    complete_mini_app_task,
     delete_mini_app_source,
     update_mini_app_account,
     update_mini_app_subscription,
@@ -107,6 +108,7 @@ def create_mini_app_web_app(settings: Settings) -> web.Application:
     app.router.add_post("/api/miniapp/finance/account", _finance_account)
     app.router.add_post("/api/miniapp/finance/subscription", _finance_subscription)
     app.router.add_post("/api/miniapp/task", _task)
+    app.router.add_post("/api/miniapp/task/complete", _task_complete)
     app.router.add_post("/api/miniapp/note", _note)
     app.router.add_post("/api/miniapp/reminder", _reminder)
     app.router.add_post("/api/miniapp/person", _person)
@@ -270,6 +272,24 @@ async def _task(request: web.Request) -> web.Response:
     return _state_response(request, user_id)
 
 
+async def _task_complete(request: web.Request) -> web.Response:
+    user_id = _user_id_from_request(request)
+    payload = await _json_payload(request)
+    task_id = str(payload.get("id", ""))
+    try:
+        completed = complete_mini_app_task(
+            vault_path=_settings(request).obsidian_vault_path,
+            user_id=user_id,
+            task_id=task_id,
+        )
+    except ValueError as exc:
+        raise web.HTTPBadRequest(text=str(exc)) from exc
+    if not completed:
+        raise web.HTTPNotFound(text="task not found")
+    _record_mini_app_event(request, user_id, "mini_app_task_complete", task_id)
+    return _state_response(request, user_id)
+
+
 async def _note(request: web.Request) -> web.Response:
     user_id = _user_id_from_request(request)
     payload = await _json_payload(request)
@@ -414,8 +434,8 @@ def _state_response(request: web.Request, user_id: int) -> web.Response:
 async def _json_payload(request: web.Request) -> dict[str, Any]:
     try:
         payload = await request.json()
-    except json.JSONDecodeError as exc:
-        raise web.HTTPBadRequest(text="request body must be JSON") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise web.HTTPBadRequest(text="request body must be UTF-8 JSON") from exc
     if not isinstance(payload, dict):
         raise web.HTTPBadRequest(text="request body must be an object")
     return payload

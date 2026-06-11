@@ -99,7 +99,6 @@ def mini_app_manifest(url: str) -> MiniAppManifest:
             "jobs",
             "skills",
             "safe_assistants",
-            "pixel_assistant",
             "assistant_chat",
             "assistant_status",
             "capability_center",
@@ -113,6 +112,7 @@ def mini_app_manifest(url: str) -> MiniAppManifest:
             "mini_app_telegram_fallback",
             "mini_app_finance_forms",
             "mini_app_task_capture",
+            "mini_app_task_complete",
         ],
     )
 

@@ -12,9 +12,40 @@ from app.services.chat_dialogue import (
     ChatReply,
     daily_actions_keyboard,
 )
+from app.services.chat_history import ChatHistoryStore
+from app.services.llm_client import answer_freeform_with_llm
 from app.services.media_understanding import MediaUnderstandingClient
 
 router = Router()
+
+FREEFORM_UNAVAILABLE_TEXT = (
+    "Я не сохранил это сообщение в память. Свободный диалог сейчас недоступен: "
+    "LLM не подключён или временно не ответил.\n\n"
+    "Для записи начни сообщение с «запомни ...», для задачи — «добавь задачу ...», "
+    "для напоминания — «напомни ...»."
+)
+
+
+async def _answer_freeform(message: Message, text: str) -> None:
+    settings = get_settings()
+    history_store = ChatHistoryStore(settings.obsidian_vault_path)
+    user_id = message.from_user.id if message.from_user else None
+    history = (
+        [
+            {"role": turn.role, "content": turn.text}
+            for turn in history_store.list_turns(user_id=user_id)
+        ]
+        if user_id is not None
+        else []
+    )
+    llm_answer = await answer_freeform_with_llm(text=text, settings=settings, history=history)
+    if llm_answer and user_id is not None:
+        history_store.append_exchange(
+            user_id=user_id,
+            user_text=text,
+            assistant_text=llm_answer,
+        )
+    await message.answer((llm_answer or FREEFORM_UNAVAILABLE_TEXT)[:3900])
 
 
 def _engine() -> ChatDialogueEngine:
@@ -43,6 +74,9 @@ def _daily_markup() -> InlineKeyboardMarkup:
 
 
 async def _send_reply(message: Message, reply: ChatReply) -> None:
+    if reply.event == "freeform":
+        await _answer_freeform(message, reply.text)
+        return
     if reply.event == "morning":
         from app.bot.handlers.lifestyle import _morning_report
 

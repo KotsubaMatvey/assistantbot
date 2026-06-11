@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from app.config import Settings
@@ -7,6 +9,7 @@ from app.services import llm_client
 from app.services.llm_client import (
     LLMProviderPool,
     LLMProviderSpec,
+    answer_freeform_with_llm,
     answer_question_with_llm,
     check_llm_providers,
     configured_llm_provider_specs,
@@ -227,6 +230,45 @@ async def test_check_llm_providers_reports_each_provider() -> None:
     assert "FAIL bad" in text
     assert "OK good" in text
     assert "bad-key" not in text
+
+
+@pytest.mark.asyncio
+async def test_freeform_answer_sends_history_and_returns_plain_content(tmp_path) -> None:
+    bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "свежий ответ"}}]},
+        )
+
+    settings = Settings(
+        llm_enabled=True,
+        obsidian_vault_path=str(tmp_path),
+        llm_provider_specs_json=(
+            '[{"name":"custom","base_url":"https://example.com/v1",'
+            '"model":"test-model","api_key":"secret"}]'
+        ),
+    )
+
+    answer = await answer_freeform_with_llm(
+        text="Продолжи мысль",
+        settings=settings,
+        history=[
+            {"role": "user", "content": "Первый вопрос"},
+            {"role": "assistant", "content": "Первый ответ"},
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert answer == "свежий ответ"
+    messages = bodies[0]["messages"]
+    assert messages[0]["role"] == "system"
+    assert "second brain" in messages[0]["content"]
+    assert messages[1] == {"role": "user", "content": "Первый вопрос"}
+    assert messages[2] == {"role": "assistant", "content": "Первый ответ"}
+    assert messages[3] == {"role": "user", "content": "Продолжи мысль"}
 
 
 @pytest.mark.asyncio

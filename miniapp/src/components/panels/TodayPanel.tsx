@@ -1,14 +1,6 @@
-import {
-  Bell,
-  ListChecks,
-  NotebookPen,
-  Plus,
-  RefreshCw,
-  Users,
-} from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import { Bell, Check, NotebookPen, Plus, RefreshCw } from "lucide-react";
+import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
-import { ActionButton } from "../ActionButton";
 import { todayActions } from "../../domain/data";
 import type { MiniAppState } from "../../domain/api";
 import { eventBus } from "../../domain/events";
@@ -21,290 +13,238 @@ type TodayPanelProps = {
   onRefresh: () => Promise<void>;
 };
 
+type QuickAddKind = "task" | "note" | "reminder";
+
+const quickAddMeta: Record<QuickAddKind, { label: string; placeholder: string; path: string }> = {
+  task: { label: "Задача", placeholder: "Например: позвонить врачу", path: "/api/miniapp/task" },
+  note: { label: "Заметка", placeholder: "Мысль, факт или решение", path: "/api/miniapp/note" },
+  reminder: {
+    label: "Напоминание",
+    placeholder: "Например: завтра в 9 забрать посылку",
+    path: "/api/miniapp/reminder",
+  },
+};
+
 export function TodayPanel({ state, loading, error, onMutate, onRefresh }: TodayPanelProps) {
-  const [taskText, setTaskText] = useState("");
-  const [noteText, setNoteText] = useState("");
-  const [reminderText, setReminderText] = useState("");
-  const [person, setPerson] = useState({ name: "", note: "" });
-  const today = useMemo(() => new Date(), []);
-  const activeDay = today.getDate();
-  const monthLabel = today.toLocaleDateString("ru-RU", { month: "long" });
-  const calendarDays = useMemo(() => getCalendarDays(today), [today]);
+  const [quickKind, setQuickKind] = useState<QuickAddKind>("task");
+  const [quickText, setQuickText] = useState("");
+  const [completing, setCompleting] = useState<string>("");
+  const week = useMemo(() => getWeekDays(new Date()), []);
 
-  async function submitTask(event: FormEvent) {
+  async function submitQuickAdd(event: FormEvent) {
     event.preventDefault();
-    if (!taskText.trim()) {
+    const text = quickText.trim();
+    if (!text) {
       return;
     }
-    await onMutate("/api/miniapp/task", { text: taskText.trim() });
-    setTaskText("");
+    await onMutate(quickAddMeta[quickKind].path, { text });
+    setQuickText("");
   }
 
-  async function submitNote(event: FormEvent) {
-    event.preventDefault();
-    if (!noteText.trim()) {
-      return;
+  async function completeTask(id: string) {
+    setCompleting(id);
+    try {
+      await onMutate("/api/miniapp/task/complete", { id });
+    } finally {
+      setCompleting("");
     }
-    await onMutate("/api/miniapp/note", { text: noteText.trim() });
-    setNoteText("");
   }
 
-  async function submitReminder(event: FormEvent) {
-    event.preventDefault();
-    if (!reminderText.trim()) {
-      return;
-    }
-    await onMutate("/api/miniapp/reminder", { text: reminderText.trim() });
-    setReminderText("");
-  }
-
-  async function submitPerson(event: FormEvent) {
-    event.preventDefault();
-    if (!person.name.trim() || !person.note.trim()) {
-      return;
-    }
-    await onMutate("/api/miniapp/person", {
-      name: person.name.trim(),
-      note: person.note.trim(),
-    });
-    setPerson({ name: "", note: "" });
-  }
-
-  const agendaItems = [
-    ...(state?.reminders ?? []).map((item) => ({
-      id: item.id,
-      title: item.snippet,
-      detail: item.due_at,
-      type: "Напоминание",
-    })),
-    ...(state?.tasks ?? []).map((item) => ({
-      id: item.id,
-      title: item.snippet,
-      detail: item.tags.slice(0, 3).join(", ") || "Задача",
-      type: "Задача",
-    })),
-  ].slice(0, 6);
+  const reminders = state?.reminders ?? [];
+  const tasks = (state?.tasks ?? []).filter((task) => !task.tags.includes("reminder"));
+  const notes = (state?.notes ?? [])
+    .filter((note) => note.type !== "task" && note.type !== "reminder")
+    .slice(0, 3);
 
   return (
-    <section className="grid gap-4" aria-label="Сегодня">
-      <StatusStrip loading={loading} error={error} onRefresh={onRefresh} />
+    <section className="grid gap-3.5" aria-label="Сегодня">
+      {(loading || error) && (
+        <div className={error ? "notice notice-error" : "notice"}>
+          <span>{loading ? "Загружаю данные…" : error}</span>
+          <button
+            className="icon-btn !h-8 !w-8"
+            type="button"
+            aria-label="Обновить"
+            onClick={() => void onRefresh()}
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
+      )}
 
-      <div className="grid grid-cols-[0.85fr_1.15fr] gap-3 max-[680px]:grid-cols-1">
-        <section className="glass-panel glass-panel-tight p-4">
-          <div className="section-title">
-            <span>Повестка</span>
-            <span className="text-sm text-[var(--accent)]">{monthLabel}</span>
-          </div>
-          <div className="calendar-grid mt-4">
-            {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day) => (
-              <span key={day} className="calendar-weekday">
-                {day}
-              </span>
-            ))}
-            {calendarDays.map((day, index) => (
-              <span
-                key={`${day || "empty"}-${index}`}
-                className={day === activeDay ? "calendar-day calendar-day-active" : "calendar-day"}
-              >
-                {day || ""}
-              </span>
-            ))}
-          </div>
-          <p className="muted-text mt-4 text-sm leading-5">{state?.agenda || state?.digest}</p>
-        </section>
+      <section className="card card-pad grid gap-3">
+        <div className="week-strip">
+          {week.map((day) => (
+            <div key={day.iso} className={day.isToday ? "week-day week-day-active" : "week-day"}>
+              <span>{day.weekday}</span>
+              <strong>{day.date}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
 
-        <section className="glass-panel glass-panel-tight p-4">
-          <div className="section-title">
-            <span>Дела</span>
-            <span className="text-sm text-[var(--accent)]">{agendaItems.length}</span>
-          </div>
-          <div className="mt-4 grid gap-2">
-            {agendaItems.map((item, index) => (
-              <article
-                key={`${item.type}-${item.id}`}
-                className={index === 0 ? "record-row record-row-active" : "record-row"}
+      <section className="card card-pad grid gap-2.5">
+        <div className="card-title">
+          <span>Дальше</span>
+          <span className="card-title-meta">
+            {reminders.length + tasks.length > 0
+              ? `${reminders.length + tasks.length} в работе`
+              : ""}
+          </span>
+        </div>
+        <div className="grid gap-2">
+          {reminders.map((item) => (
+            <article key={`reminder-${item.id}`} className="row">
+              <span className="row-icon">
+                <Bell size={15} />
+              </span>
+              <div className="row-body">
+                <span className="row-title">{item.snippet}</span>
+                <span className="row-sub">{formatDateTime(item.due_at)}</span>
+              </div>
+            </article>
+          ))}
+          {tasks.map((item) => (
+            <article key={`task-${item.id}`} className="row">
+              <button
+                className={completing === item.id ? "check check-done" : "check"}
+                type="button"
+                aria-label="Отметить выполненной"
+                disabled={Boolean(completing)}
+                onClick={() => void completeTask(item.id)}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <span className="app-kicker">{item.type}</span>
-                    <strong className="mt-1 block truncate text-base text-white">
-                      {item.title}
-                    </strong>
-                    <span className="muted-text mt-1 block truncate text-sm">{item.detail}</span>
-                  </div>
-                  <span className="muted-text whitespace-nowrap text-sm">
-                    {index === 0 ? "сейчас" : "далее"}
-                  </span>
+                <Check size={14} />
+              </button>
+              <div className="row-body">
+                <span className="row-title">{item.snippet}</span>
+                {displayTags(item.tags) && <span className="row-sub">{displayTags(item.tags)}</span>}
+              </div>
+            </article>
+          ))}
+          {!loading && reminders.length === 0 && tasks.length === 0 && (
+            <article className="empty">
+              <strong>Пока пусто</strong>
+              <span>Добавь первую задачу или напоминание ниже.</span>
+            </article>
+          )}
+        </div>
+      </section>
+
+      <form className="card card-pad grid gap-2.5" onSubmit={(event) => void submitQuickAdd(event)}>
+        <div className="segmented" role="tablist" aria-label="Тип записи">
+          {(Object.keys(quickAddMeta) as QuickAddKind[]).map((kind) => (
+            <button
+              key={kind}
+              className={quickKind === kind ? "segment segment-active" : "segment"}
+              type="button"
+              onClick={() => setQuickKind(kind)}
+            >
+              {quickAddMeta[kind].label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_42px] gap-2">
+          <input
+            className="input"
+            value={quickText}
+            placeholder={quickAddMeta[quickKind].placeholder}
+            onChange={(event) => setQuickText(event.target.value)}
+          />
+          <button
+            className="chat-send"
+            type="submit"
+            aria-label={`Добавить: ${quickAddMeta[quickKind].label}`}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+      </form>
+
+      <div className="grid grid-cols-4 gap-2 max-[460px]:grid-cols-2">
+        <Stat label="Задачи" value={String(state?.tasks.length ?? 0)} />
+        <Stat label="Напоминания" value={String(state?.reminders.length ?? 0)} />
+        <Stat label="Заметки" value={String(state?.notes.length ?? 0)} />
+        <Stat label="Фокус" value={String(state?.focus.length ?? 0)} />
+      </div>
+
+      {notes.length > 0 && (
+        <section className="card card-pad grid gap-2.5">
+          <div className="card-title">
+            <span>Недавние заметки</span>
+          </div>
+          <div className="grid gap-2">
+            {notes.map((item) => (
+              <article key={item.id} className="row">
+                <span className="row-icon">
+                  <NotebookPen size={15} />
+                </span>
+                <div className="row-body">
+                  <span className="row-title">{item.snippet}</span>
+                  {displayTags(item.tags) && (
+                    <span className="row-sub">{displayTags(item.tags)}</span>
+                  )}
                 </div>
               </article>
             ))}
-            {!loading && agendaItems.length === 0 && (
-              <article className="empty-state">
-                <strong className="block text-base text-white">Нет запланированных дел</strong>
-                <span className="muted-text mt-1 block text-sm">Добавь задачу или напоминание.</span>
-              </article>
-            )}
           </div>
         </section>
-      </div>
+      )}
 
-      <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
-        <MetricCard label="Задачи" value={String(state?.tasks.length ?? 0)} />
-        <MetricCard label="Напоминания" value={String(state?.reminders.length ?? 0)} />
-        <MetricCard label="Заметки" value={String(state?.notes.length ?? 0)} />
-        <MetricCard label="Фокус" value={String(state?.focus.length ?? 0)} />
-      </div>
-
-      <section className="glass-panel glass-panel-tight grid gap-2 p-3">
-        <QuickForm
-          icon={<ListChecks size={16} />}
-          value={taskText}
-          label="Задача"
-          onChange={setTaskText}
-          onSubmit={submitTask}
-        />
-        <QuickForm
-          icon={<NotebookPen size={16} />}
-          value={noteText}
-          label="Заметка"
-          onChange={setNoteText}
-          onSubmit={submitNote}
-        />
-        <QuickForm
-          icon={<Bell size={16} />}
-          value={reminderText}
-          label="Напоминание"
-          onChange={setReminderText}
-          onSubmit={submitReminder}
-        />
-        <PersonForm person={person} onChange={setPerson} onSubmit={submitPerson} />
-      </section>
-
-      <div className="grid grid-cols-4 gap-2 max-[620px]:grid-cols-2">
+      <div className="flex flex-wrap gap-2">
         {todayActions.map((action) => (
-          <ActionButton
+          <button
             key={action.command}
-            icon={action.icon}
-            primary={action.primary}
+            className="chip"
+            type="button"
             onClick={() => eventBus.emit("command:send", { command: action.command })}
           >
             {action.label}
-          </ActionButton>
+          </button>
         ))}
       </div>
     </section>
   );
 }
 
-function PersonForm({
-  person,
-  onChange,
-  onSubmit,
-}: {
-  person: { name: string; note: string };
-  onChange: (person: { name: string; note: string }) => void;
-  onSubmit: (event: FormEvent) => void;
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <form
-      className="grid grid-cols-[104px_1fr_1.4fr_44px] gap-2 max-[620px]:grid-cols-1"
-      onSubmit={onSubmit}
-    >
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
-        <Users size={16} />
-        Человек
-      </label>
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        value={person.name}
-        placeholder="Имя"
-        onChange={(event) => onChange({ ...person, name: event.target.value })}
-      />
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        value={person.note}
-        placeholder="Заметка"
-        onChange={(event) => onChange({ ...person, note: event.target.value })}
-      />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label="Добавить человека">
-        <Plus size={16} />
-      </button>
-    </form>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <article className="metric-card">
+    <article className="stat">
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
   );
 }
 
-function QuickForm({
-  icon,
-  label,
-  value,
-  onChange,
-  onSubmit,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: (event: FormEvent) => void;
-}) {
-  return (
-    <form className="grid grid-cols-[104px_1fr_44px] gap-2 max-[520px]:grid-cols-1" onSubmit={onSubmit}>
-      <label className="flex items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
-        {icon}
-        {label}
-      </label>
-      <input
-        className="surface-input px-3 py-2 text-sm"
-        value={value}
-        placeholder={label}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <button className="icon-button !h-11 !w-full" type="submit" aria-label={`Добавить: ${label}`}>
-        <Plus size={16} />
-      </button>
-    </form>
-  );
+const serviceTags = new Set(["pricebot", "memory", "task", "reminder", "note", "preference"]);
+
+function displayTags(tags: string[]): string {
+  return tags
+    .filter((tag) => !serviceTags.has(tag))
+    .slice(0, 3)
+    .join(" · ");
 }
 
-function StatusStrip({
-  loading,
-  error,
-  onRefresh,
-}: {
-  loading: boolean;
-  error: string;
-  onRefresh: () => Promise<void>;
-}) {
-  if (!loading && !error) {
-    return null;
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
   }
-  return (
-    <div className="glass-panel glass-panel-tight flex items-center justify-between gap-3 p-3 text-sm text-[var(--muted)]">
-      <span>{loading ? "Загружаю актуальные данные" : error}</span>
-      <button className="icon-button !h-9 !w-9" type="button" onClick={() => void onRefresh()}>
-        <RefreshCw size={15} />
-      </button>
-    </div>
-  );
+  const day = date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  const time = date.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return `${day}, ${time}`;
 }
 
-function getCalendarDays(date: Date): (number | null)[] {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = (new Date(year, month, 1).getDay() + 6) % 7;
-  const days = [
-    ...Array.from({ length: firstDay }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
-  ];
-  const tail = (7 - (days.length % 7)) % 7;
-  return [...days, ...Array.from({ length: tail }, () => null)];
+function getWeekDays(today: Date): { iso: string; weekday: string; date: number; isToday: boolean }[] {
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + index);
+    return {
+      iso: day.toISOString().slice(0, 10),
+      weekday: day.toLocaleDateString("ru-RU", { weekday: "short" }),
+      date: day.getDate(),
+      isToday: day.toDateString() === today.toDateString(),
+    };
+  });
 }

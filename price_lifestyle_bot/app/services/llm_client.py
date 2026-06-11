@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -423,6 +424,8 @@ async def answer_freeform_with_llm(
     *,
     text: str,
     settings: Settings,
+    history: list[dict[str, str]] | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> str | None:
     if not settings.llm_enabled:
         return None
@@ -436,22 +439,37 @@ async def answer_freeform_with_llm(
         temperature=settings.llm_temperature,
         daily_limit_cooldown_hours=settings.llm_daily_limit_cooldown_hours,
         cooldown_path=_cooldown_path(settings),
+        transport=transport,
     )
     completion = await pool.complete(
         [
-            {
-                "role": "system",
-                "content": (
-                    "Ты краткий Telegram assistant. Отвечай по-русски, без выполнения "
-                    "локальных действий и без выдумывания доступа к памяти."
-                ),
-            },
+            {"role": "system", "content": _freeform_system_prompt(settings)},
+            *(history or []),
             {"role": "user", "content": text},
         ]
     )
     if completion is None:
         return None
-    return f"{completion.content}\n\nLLM: {completion.provider} / {completion.model}"
+    return completion.content
+
+
+def _freeform_system_prompt(settings: Settings) -> str:
+    try:
+        local_now = datetime.now(ZoneInfo(settings.timezone))
+    except (KeyError, ValueError):
+        local_now = datetime.now(UTC)
+    weekday = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")[local_now.weekday()]
+    return (
+        "Ты — личный second brain ассистент пользователя в Telegram. "
+        f"Сейчас {local_now:%d.%m.%Y %H:%M} ({weekday}), часовой пояс {settings.timezone}. "
+        "Отвечай по-русски, кратко и по делу, обычным текстом без markdown-разметки. "
+        "Ты не выполняешь локальные действия сам и не имеешь доступа к памяти пользователя "
+        "в этом режиме — не выдумывай её содержимое. "
+        "Если пользователь хочет что-то сохранить или запланировать, подскажи точную фразу: "
+        "«запомни ...», «добавь задачу ...», «напомни <когда> <что>», "
+        "«потратил <сумма> на <категория>», «добавь <товар> в покупки». "
+        "Вопросы о собственных заметках решаются фразами вида «что я записал про ...»."
+    )
 
 
 def _memory_question_messages(

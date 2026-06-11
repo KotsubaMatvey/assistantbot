@@ -29,6 +29,7 @@ from app.services.assistant_runtime import ASSISTANT_MODES, AssistantRuntimeStor
 from app.services.assistant_skills import AssistantSkillStore
 from app.services.assistant_tools import ToolUsageStore, format_tool_registry, list_tools, run_tool
 from app.services.audit_log import AuditLogStore
+from app.services.chat_history import ChatHistoryStore
 from app.services.communications import FollowUpStore, draft_email, parse_person_text
 from app.services.conversation_summary import summarize_conversation
 from app.services.knowledge_ingestion import (
@@ -617,9 +618,11 @@ async def verbose_handler(message: Message) -> None:
 async def session_reset_handler(message: Message) -> None:
     if message.from_user is None:
         return
-    state = AssistantRuntimeStore(get_settings().obsidian_vault_path).reset_session(
+    settings = get_settings()
+    state = AssistantRuntimeStore(settings.obsidian_vault_path).reset_session(
         user_id=message.from_user.id
     )
+    ChatHistoryStore(settings.obsidian_vault_path).clear(user_id=message.from_user.id)
     _audit(message.from_user.id, "session_reset", str(state.session_epoch))
     await message.answer(f"Сессия сброшена. Epoch: {state.session_epoch}")
 

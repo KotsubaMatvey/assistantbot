@@ -4,7 +4,7 @@ import json
 import re
 import secrets
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -458,7 +458,7 @@ class ChatDialogueEngine:
         reply = self._handle_one(user_id=user_id, text=clean, profile=state.profile, now=now)
         if reply is not None:
             return reply
-        return self._save_note(user_id=user_id, text=clean, note_type=None, now=now)
+        return ChatReply(clean, event="freeform")
 
     def expect_voice_transcript(self, *, user_id: int) -> ChatReply:
         self.dialogue.pending(user_id=user_id, kind="voice_transcript", payload={})
@@ -666,6 +666,8 @@ class ChatDialogueEngine:
             return ChatReply("Готовлю вечерний обзор.", event="evening")
         if normalized in {"что у меня сегодня", "покажи дела на сегодня", "мои дела"}:
             return ChatReply("Показываю план.", event="agenda")
+        if normalized in {"что ты умеешь", "помощь", "справка", "как тобой пользоваться"}:
+            return ChatReply(_capabilities_text())
         if normalized in {
             "покажи что ты сегодня запомнил",
             "покажи, что ты сегодня запомнил",
@@ -695,6 +697,7 @@ class ChatDialogueEngine:
                     "task",
                     "reminder",
                     "expense",
+                    "income",
                     "receipt",
                     "shopping",
                 },
@@ -703,7 +706,11 @@ class ChatDialogueEngine:
                 return ChatReply("Последнего действия для отмены не нашёл.")
             return self._undo(user_id=user_id, action=latest, now=now)
         if "сколько" in normalized and any(word in normalized for word in ("потрат", "расход")):
-            return self._expense_summary(user_id=user_id, text=text, now=now)
+            return self._money_summary(user_id=user_id, text=text, kind="expense", now=now)
+        if "сколько" in normalized and any(
+            word in normalized for word in ("доход", "заработал", "получил")
+        ):
+            return self._money_summary(user_id=user_id, text=text, kind="income", now=now)
         if normalized in {"что купить", "что в покупках", "список покупок", "покажи покупки"}:
             return self._shopping_list(user_id=user_id)
         removed = re.match(r"^(?:убери|удали)\s+(.+?)\s+из\s+(?:списка\s+)?покуп", normalized)
@@ -774,6 +781,37 @@ class ChatDialogueEngine:
                 )
                 return ChatReply(f"На какую категорию записать расход {format_money(amount)}?")
             return self._save_expense(user_id=user_id, amount=amount, category=category, now=now)
+        bought = re.match(
+            r"^(?:я\s+)?купил[аи]?\s+(?P<category>.+?)\s+(?:за|на)\s+"
+            r"(?P<amount>\d+(?:[.,]\d{1,2})?)\s*(?:₽|руб(?:лей|ля|ль)?\.?)?$",
+            text.strip(),
+            flags=re.IGNORECASE,
+        )
+        if bought:
+            return self._save_expense(
+                user_id=user_id,
+                amount=parse_amount(bought.group("amount")),
+                category=bought.group("category").strip(),
+                now=now,
+            )
+        income = re.match(
+            r"^(?:я\s+)?(?:получил[аи]?|заработал[аи]?|запиши\s+доход|доход)\s+"
+            r"(?P<amount>\d+(?:[.,]\d{1,2})?)\s*(?:₽|руб(?:лей|ля|ль)?\.?)?"
+            r"(?:\s+(?:за|от|из|с)\s+)?\s*(?P<category>.*)$",
+            text.strip(),
+            flags=re.IGNORECASE,
+        )
+        if income:
+            amount = parse_amount(income.group("amount"))
+            category = income.group("category").strip()
+            if not category:
+                self.dialogue.pending(
+                    user_id=user_id,
+                    kind="income_category_new",
+                    payload={"amount": str(amount)},
+                )
+                return ChatReply(f"Откуда доход {format_money(amount)}? Например: зарплата.")
+            return self._save_income(user_id=user_id, amount=amount, category=category, now=now)
         reminder = re.match(
             r"^(?:напомни(?:\s+мне)?|поставь\s+напоминание)\s+(.+)$",
             text.strip(),
@@ -885,7 +923,7 @@ class ChatDialogueEngine:
         if pending.kind == "voice_transcript":
             self.dialogue.clear_pending(user_id=user_id)
             reply = self._handle_one(user_id=user_id, text=text, profile=profile, now=now)
-            return reply or self._save_note(user_id=user_id, text=text, note_type="voice", now=now)
+            return reply or ChatReply(text, event="freeform")
         if pending.kind == "photo_receipt":
             try:
                 reply = self._save_receipt(user_id=user_id, text=text, now=now)
@@ -899,6 +937,14 @@ class ChatDialogueEngine:
         if pending.kind == "expense_category_new":
             self.dialogue.clear_pending(user_id=user_id)
             return self._save_expense(
+                user_id=user_id,
+                amount=parse_amount(pending.payload["amount"]),
+                category=text,
+                now=now,
+            )
+        if pending.kind == "income_category_new":
+            self.dialogue.clear_pending(user_id=user_id)
+            return self._save_income(
                 user_id=user_id,
                 amount=parse_amount(pending.payload["amount"]),
                 category=text,
@@ -1172,6 +1218,35 @@ class ChatDialogueEngine:
             rows=self._rows(action, allow_edit=True),
         )
 
+    def _save_income(
+        self,
+        *,
+        user_id: int,
+        amount: Decimal,
+        category: str,
+        now: datetime | None,
+    ) -> ChatReply:
+        transaction = self.finance.add_transaction(
+            user_id=user_id,
+            kind="income",
+            amount=amount,
+            category=category,
+            created_at=now,
+        )
+        action = self.dialogue.remember_action(
+            user_id=user_id,
+            kind="income",
+            ref=transaction.id,
+            label=f"{format_money(amount)} / {category}",
+            payload={"category": category},
+            now=now,
+        )
+        self._audit_change(user_id, "chat_income_create", action.label, now=now)
+        return ChatReply(
+            f"Записал доход: {format_money(amount)}, источник «{category}».",
+            rows=self._rows(action),
+        )
+
     def _change_category(
         self,
         *,
@@ -1246,7 +1321,7 @@ class ChatDialogueEngine:
             )
         results = self.memory.search_user_notes(user_id=user_id, query=question, limit=3)
         if not results:
-            return ChatReply("В памяти пока нет подходящей информации.")
+            return ChatReply(question, event="freeform")
         shown = results[:1] if concise else results
         lines = ["Нашёл в памяти:"]
         for result in shown:
@@ -1292,31 +1367,38 @@ class ChatDialogueEngine:
             return ChatReply("Список покупок пуст.")
         return ChatReply("Покупки:\n" + "\n".join(f"- {item.text}" for item in items))
 
-    def _expense_summary(
+    def _money_summary(
         self,
         *,
         user_id: int,
         text: str,
+        kind: str,
         now: datetime | None,
     ) -> ChatReply:
         local = (now or datetime.now(UTC)).astimezone(ZoneInfo(self.timezone_name))
-        month = local.strftime("%Y-%m")
-        category_match = re.search(r"\bна\s+(.+?)(?:\s+в\s+этом\s+месяце)?\??$", text, re.I)
-        category = category_match.group(1).strip(" ?") if category_match else ""
+        period_label, start_date, end_date, clean_text = _summary_period(text, local)
         transactions = self.finance.list_transactions(
             user_id=user_id,
-            kind="expense",
-            month=month,
+            kind=kind,
             limit=10_000,
         )
+        timezone = ZoneInfo(self.timezone_name)
+        transactions = [
+            item
+            for item in transactions
+            if start_date <= item.created_at.astimezone(timezone).date() <= end_date
+        ]
+        category_match = re.search(r"\bна\s+(.+?)\??$", clean_text, re.I)
+        category = category_match.group(1).strip(" ?") if category_match else ""
         if category:
             normalized = _normalize(category)
             transactions = [
                 item for item in transactions if normalized in _normalize(item.category)
             ]
         total = sum((item.amount for item in transactions), Decimal("0"))
+        word = "расходов" if kind == "expense" else "доходов"
         suffix = f" на «{category}»" if category else ""
-        return ChatReply(f"За {month} расходов{suffix}: {format_money(total)}.")
+        return ChatReply(f"{period_label} {word}{suffix}: {format_money(total)}.")
 
     def _undo(
         self,
@@ -1327,7 +1409,7 @@ class ChatDialogueEngine:
     ) -> ChatReply:
         if action.kind in {"note", "preference", "task", "reminder"}:
             removed = self.memory.delete_note(user_id=user_id, note_id=action.ref)
-        elif action.kind == "expense":
+        elif action.kind in {"expense", "income"}:
             removed = self.finance.delete_transaction(user_id=user_id, transaction_id=action.ref)
         elif action.kind == "receipt":
             removed = self.spending.delete_receipt(user_id=user_id, receipt_id=action.ref)
@@ -1436,6 +1518,50 @@ def daily_actions_keyboard() -> tuple[tuple[ChatButton, ...], ...]:
             ChatButton("Утро", "chat:brief:morning"),
             ChatButton("Вечер", "chat:brief:evening"),
         ),
+    )
+
+
+def _summary_period(text: str, local: datetime) -> tuple[str, date, date, str]:
+    today = local.date()
+    periods: list[tuple[str, str, date, date]] = [
+        (r"\bпозавчера\b", "Позавчера", today - timedelta(days=2), today - timedelta(days=2)),
+        (r"\bсегодня\b", "Сегодня", today, today),
+        (r"\bвчера\b", "Вчера", today - timedelta(days=1), today - timedelta(days=1)),
+        (
+            r"\b(?:за|на)\s+(?:эту\s+|этой\s+|последнюю\s+)?недел[юеи]\b",
+            "За неделю",
+            today - timedelta(days=6),
+            today,
+        ),
+    ]
+    for pattern, label, start, end in periods:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            clean = re.sub(pattern, " ", text, flags=re.IGNORECASE)
+            return label, start, end, " ".join(clean.split())
+    clean = re.sub(r"\bв\s+этом\s+месяце\b|\bза\s+месяц\b", " ", text, flags=re.IGNORECASE)
+    month_start = today.replace(day=1)
+    next_month = (month_start + timedelta(days=32)).replace(day=1)
+    return (
+        f"За {local:%Y-%m}",
+        month_start,
+        next_month - timedelta(days=1),
+        " ".join(clean.split()),
+    )
+
+
+def _capabilities_text() -> str:
+    return (
+        "Я твой second brain. Примеры фраз:\n"
+        "— «запомни, что ...» — сохранить факт\n"
+        "— «добавь задачу позвонить врачу», потом «готово»\n"
+        "— «напомни завтра в 9 забрать посылку»\n"
+        "— «потратил 740 на продукты» / «получил 50000 зарплата»\n"
+        "— «сколько потратил за неделю», «сколько потратил на еду»\n"
+        "— «добавь молоко в покупки» / «что купить»\n"
+        "— «что я записал про ...» — поиск по памяти\n"
+        "— «покажи, что ты сегодня запомнил», «отмени последнюю запись»\n"
+        "— «присылай утреннюю сводку в 8»\n"
+        "Остальное — свободный диалог. Полный список команд: /help"
     )
 
 
